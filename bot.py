@@ -17,23 +17,23 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ПРАВИЛЬНЫЕ ID ИЗ ТВОЕГО HTML
+# НОВЫЕ ID ИЗ ТВОЕГО СООБЩЕНИЯ
 EMOJI_IDS = {
-    "fire": "5206476089127372379",          # 🔥 (звезда)
-    "play": "5278304890257436355",          # 🎮
-    "chat": "5278227821364275264",          # 📁 (файл)
-    "profile": "5275979556308674886",       # 👤
-    "rules": "5276262671962892944",         # 🛡
-    "help": "5276037216244624892",          # 💼
+    "home": "5257963315258204021",          # 🏘 (дом - вместо огня)
+    "play": "5258508428212445001",          # 🎮 (играть)
+    "chat": "5260535596941582167",          # 💬 (чат)
+    "profile": "5258011929993026890",       # 👤 (профиль)
+    "rules": "5260730055880876557",         # ⛓ (правила)
+    "help": "5258328383183396223",          # 📖 (помощь)
 }
 
 WELCOME_TEXT = (
-    f'<tg-emoji emoji-id="{EMOJI_IDS["fire"]}">🔥</tg-emoji> '
+    f'<tg-emoji emoji-id="{EMOJI_IDS["home"]}">🏘</tg-emoji> '
     '<b>Добро пожаловать в @wxs_gamebot</b>'
 )
 
 
-def main_keyboard() -> InlineKeyboardMarkup:
+def main_keyboard():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -78,36 +78,6 @@ async def start_handler(message: Message):
 @dp.callback_query(F.data.in_({"play", "chat", "profile", "rules", "help"}))
 async def silent_callback(callback: CallbackQuery):
     await callback.answer()
-
-
-# ДОБАВЛЯЮ ОБРАБОТЧИК ДЛЯ ПРОВЕРКИ ТВОИХ ID
-@dp.message()
-async def check_emoji(message: Message):
-    """Отправь боту ID или эмодзи для проверки"""
-    if message.text and message.text.startswith('/check'):
-        # Проверяем каждый ID
-        result = "Проверка твоих ID:\n\n"
-        for name, emoji_id in EMOJI_IDS.items():
-            # Пробуем отправить эмодзи с этим ID
-            try:
-                test_text = f'<tg-emoji emoji-id="{emoji_id}">❓</tg-emoji> {name}'
-                await message.answer(test_text, parse_mode="HTML")
-                result += f"✅ {name}: {emoji_id} - работает\n"
-            except:
-                result += f"❌ {name}: {emoji_id} - НЕ РАБОТАЕТ\n"
-        await message.answer(result)
-    
-    # Если отправлен эмодзи - показываем его ID
-    if message.entities:
-        for entity in message.entities:
-            if entity.type == "custom_emoji":
-                await message.reply(
-                    f"✅ ID этого эмодзи:\n"
-                    f"<code>{entity.custom_emoji_id}</code>\n\n"
-                    f"Скопируй и вставь в словарь EMOJI_IDS",
-                    parse_mode="HTML"
-                )
-                return
 
 
 async def main():
