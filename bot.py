@@ -12,8 +12,9 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# Исправлено: внешние кавычки изменены на одинарные, чтобы внутренние двойные не ломали синтаксис
 WELCOME_TEXT = (
-    "<b> <tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> Добро пожаловать в @wxs_gamebot</b>"
+    '<b> <tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> Добро пожаловать в @wxs_gamebot</b>'
 )
 
 def main_keyboard() -> InlineKeyboardMarkup:
