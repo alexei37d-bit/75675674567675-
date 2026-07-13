@@ -117,12 +117,12 @@ def profile_keyboard() -> InlineKeyboardMarkup:
 
 def get_profile_message(user: dict) -> str:
     return (
-        f"👤 <b>Имя:</b> {user['name']}\n"
-        f"ℹ️ <b>Ваш ID:</b> <code>{user['id']}</code>\n"
-        f"⏰ <b>Регистрация:</b> {user['reg_date']}\n\n"
-        f"📊 <b>Оборот:</b> {user['turnover']:.2f} $\n\n"
-        f"⬇️ <b>Пополнений:</b> {user['deposits']:.2f} $\n"
-        f"⬆️ <b>Выводов:</b> {user['withdrawals']:.2f} $"
+        f"<tg-emoji emoji-id=\"5275979556308674886\">👤</tg-emoji> <b>Имя:</b> {user['name']}\n"
+        f"<tg-emoji emoji-id=\"5278753302023004775\">ℹ️</tg-emoji> <b>Ваш ID:</b> <code>{user['id']}</code>\n"
+        f"<tg-emoji emoji-id=\"5276412364458059956\">🕓</tg-emoji> <b>Регистрация:</b> {user['reg_date']}\n\n"
+        f"<tg-emoji emoji-id=\"5276398496008663230\">👝</tg-emoji> <b>Оборот:</b> {user['turnover']:.2f} $\n\n"
+        f"<tg-emoji emoji-id=\"5206401524200145033\">🔼</tg-emoji> <b>Пополнений:</b> {user['deposits']:.2f} $\n"
+        f"<tg-emoji emoji-id=\"5206510891247371052\">🔽</tg-emoji> <b>Выводов:</b> {user['withdrawals']:.2f} $"
     )
 
 @dp.message(CommandStart())
