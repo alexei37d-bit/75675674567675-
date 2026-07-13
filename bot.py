@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import aiohttp
+from aiohttp import web
 from datetime import datetime
 import random
 
@@ -174,21 +175,23 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         invoice_url = "https://t.me/xrocket?start=inv_ltGmVOFnRWoVk9U"
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Оплатить счет", url=invoice_url)],
-        [InlineKeyboardButton(text="Проверить оплату", callback_data=f"check_dep_{amount}")]
+        [InlineKeyboardButton(text="Оплатить счет", url=invoice_url)]
     ])
-    await message.answer(f"Оплата на сумму <b>{amount} $</b>\nПерейдите по ссылке и после оплаты нажмите «Проверить оплату».", parse_mode="HTML", reply_markup=kb)
+    await message.answer(f"Оплата на сумму <b>{amount} $</b>\nПерейдите по ссылке. Баланс обновится автоматически.", parse_mode="HTML", reply_markup=kb)
     await state.clear()
 
-@dp.callback_query(F.data.startswith("check_dep_"))
-async def check_deposit_status(callback: CallbackQuery):
-    amount = float(callback.data.split("_")[2])
-    # Исправленная логика авто-выдачи:
-    user = get_or_create_user(callback.from_user.id, callback.from_user.full_name)
-    user["balance"] += amount
-    user["deposits"] += amount
-    await callback.message.edit_text(f"✅ Баланс пополнен на {amount} $")
-    await callback.answer()
+# ВЕБХУК ДЛЯ ПЛАТЕЖЕК
+async def handle_webhook(request):
+    data = await request.json()
+    # Логика обработки callback от платежки (пример для CryptoBot)
+    if data.get("status") == "paid":
+        user_id = data.get("user_id")
+        amount = float(data.get("amount"))
+        if user_id in USERS_DB:
+            USERS_DB[user_id]["balance"] += amount
+            USERS_DB[user_id]["deposits"] += amount
+            await bot.send_message(user_id, f"✅ Платеж подтвержден! +{amount} $")
+    return web.Response(status=200)
 
 @dp.callback_query(F.data == "withdraw_select")
 async def select_withdraw_method(callback: CallbackQuery):
@@ -352,9 +355,17 @@ async def admin_reject_req_inline(callback: CallbackQuery):
     await callback.message.edit_text("❌ ОТКЛОНЕНО")
     await callback.answer()
 
+async def start_web_server():
+    app = web.Application()
+    app.router.add_post("/webhook", handle_webhook)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    await site.start()
+
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    await asyncio.gather(dp.start_polling(bot), start_web_server())
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main())asyncio.run(main())
