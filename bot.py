@@ -19,9 +19,6 @@ from aiogram.types import (
 
 BOT_TOKEN = "8804355629:AAH6auh84fLdBhSfQkI_dKBnY9QTa-XXm_k"
 
-CRYPTO_BOT_API_KEY = "548204:AAZOXSPMBWOj3XO29UyRcrxpgxlzujtetPO"
-XROCKET_API_KEY = "c36722e4cae191a22a9097963"
-
 ADMIN_IDS = [6130985988, 7921743592]
 
 logging.basicConfig(level=logging.INFO)
@@ -55,45 +52,6 @@ class AdminStates(StatesGroup):
     waiting_for_broadcast = State()
     waiting_for_deduct_id = State()
     waiting_for_deduct_amount = State()
-
-# === Реальная проверка оплаты по API на конкретную сумму ===
-async def check_crypto_bot_payment(invoice_hash: str, expected_amount: float) -> bool:
-    url = "https://pay.crypt.bot/api/getInvoices"
-    headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_API_KEY}
-    params = {"status": "paid"}
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, headers=headers, params=params) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("ok"):
-                        # Ищем оплаченный счет с совпадающей суммой
-                        for item in data["result"]["items"]:
-                            if item["status"] == "paid" and float(item["amount"]) >= float(expected_amount):
-                                return True
-        except Exception as e:
-            logging.error(f"CryptoBot API Error: {e}")
-    return False
-
-async def check_xrocket_payment(invoice_hash: str, expected_amount: float) -> bool:
-    url = f"https://pay.ton-rocket.com/tg-invoices"
-    headers = {"Rocket-Pay-Key": XROCKET_API_KEY}
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, headers=headers) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("success"):
-                        # Ищем оплаченный счет с совпадающей суммой
-                        for item in data.get("data", []):
-                            if item["status"] == "paid" and float(item["amount"]) >= float(expected_amount):
-                                return True
-        except Exception as e:
-            logging.error(f"XRocket API Error: {e}")
-    return False
-
-async def send_crypto_bot_payout(amount: float, target_user_id: int) -> bool:
-    return False
 
 WELCOME_TEXT = (
     '<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>'
@@ -275,25 +233,16 @@ async def process_deposit_amount(message: Message, state: FSMContext):
 @dp.callback_query(F.data.startswith("check_dep_"))
 async def check_deposit_status(callback: CallbackQuery):
     parts = callback.data.split("_")
-    method = parts[2]
-    invoice_hash = parts[3]
     amount = float(parts[4])
     user_id = callback.from_user.id
     
-    is_paid = False
-    # РЕАЛЬНАЯ ПРОВЕРКА ПО API
-    if method == "crypto":
-        is_paid = await check_crypto_bot_payment(invoice_hash, amount)
-    elif method == "xrocket":
-        is_paid = await check_xrocket_payment(invoice_hash, amount)
-        
-    if is_paid:
-        user = get_or_create_user(user_id, callback.from_user.full_name)
-        user["balance"] += amount
-        user["deposits"] += amount
-        await callback.message.edit_text(f"✅ Пополнение на {amount} $ успешно зачислено!")
-    else:
-        await callback.answer("❌ Счет еще не оплачен или сумма не совпадает.", show_alert=True)
+    # Сразу выдаем баланс по нажатию без API проверки
+    user = get_or_create_user(user_id, callback.from_user.full_name)
+    user["balance"] += amount
+    user["deposits"] += amount
+    
+    await callback.message.edit_text(f"✅ Пополнение на {amount} $ успешно зачислено!")
+    await callback.answer()
 
 @dp.callback_query(F.data == "withdraw_select")
 async def select_withdraw_method(callback: CallbackQuery):
