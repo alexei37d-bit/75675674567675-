@@ -1,8 +1,7 @@
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart  # ДОБАВЛЕНО
+from aiogram.filters import CommandStart
 
 bot = Bot(token="8364120048:AAFE8DkMaaTt8_MgYoJQkHVsiG41Cg_AZIo")
 dp = Dispatcher()
@@ -47,8 +46,8 @@ async def start(message: types.Message):
         ],
     ])
 
-    # Отправляем сообщение с кнопками
-    await message.answer("Выберите действие:", reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    # Отправляем сообщение с кнопками (УБРАЛ parse_mode)
+    await message.answer("Выберите действие:", reply_markup=keyboard)
 
 @dp.callback_query()
 async def handle_callback(callback: types.CallbackQuery):
@@ -66,4 +65,4 @@ async def handle_callback(callback: types.CallbackQuery):
 
 # Запуск бота
 if __name__ == "__main__":
-    asyncio.run(dp.start_polling(bot))  # ИСПРАВЛЕНО
+    asyncio.run(dp.start_polling(bot))
