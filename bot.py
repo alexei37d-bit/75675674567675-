@@ -28,38 +28,38 @@ EMOJI_IDS = {
 }
 
 
-def premium_emoji(emoji_id: str, fallback: str = "❓") -> str:
-    """Создает премиум эмодзи с фолбэком"""
-    return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
-
-
 def main_keyboard():
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"{premium_emoji(EMOJI_IDS['play'], '🎮')} Играть",
+                    text="Играть",
                     callback_data="play",
+                    icon_custom_emoji_id=EMOJI_IDS["play"]  # 🔥 КАСТОМНЫЙ ЭМОДЗИ В ИКОНКЕ
                 ),
                 InlineKeyboardButton(
-                    text=f"{premium_emoji(EMOJI_IDS['chat'], '💬')} Чат",
+                    text="Чат",
                     callback_data="chat",
+                    icon_custom_emoji_id=EMOJI_IDS["chat"]
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text=f"{premium_emoji(EMOJI_IDS['profile'], '👤')} Профиль",
+                    text="Профиль",
                     callback_data="profile",
+                    icon_custom_emoji_id=EMOJI_IDS["profile"]
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text=f"{premium_emoji(EMOJI_IDS['rules'], '⛓')} Правила",
+                    text="Правила",
                     callback_data="rules",
+                    icon_custom_emoji_id=EMOJI_IDS["rules"]
                 ),
                 InlineKeyboardButton(
-                    text=f"{premium_emoji(EMOJI_IDS['help'], '📖')} Помощь",
+                    text="Помощь",
                     callback_data="help",
+                    icon_custom_emoji_id=EMOJI_IDS["help"]
                 ),
             ],
         ]
@@ -68,13 +68,8 @@ def main_keyboard():
 
 @dp.message(CommandStart())
 async def start_handler(message: Message):
-    welcome = (
-        f'{premium_emoji(EMOJI_IDS["home"], "🏘")} '
-        '<b>Добро пожаловать в @wxs_gamebot</b>\n\n'
-        'Выбери действие:'
-    )
     await message.answer(
-        welcome,
+        "🏘 <b>Добро пожаловать в @wxs_gamebot</b>\n\nВыбери действие:",
         parse_mode="HTML",
         reply_markup=main_keyboard(),
     )
@@ -83,11 +78,11 @@ async def start_handler(message: Message):
 @dp.callback_query(F.data.in_({"play", "chat", "profile", "rules", "help"}))
 async def handle_buttons(callback: CallbackQuery):
     messages = {
-        "play": f'{premium_emoji(EMOJI_IDS["play"], "🎮")} <b>Игра началась!</b>',
-        "chat": f'{premium_emoji(EMOJI_IDS["chat"], "💬")} <b>Открываем чат...</b>',
-        "profile": f'{premium_emoji(EMOJI_IDS["profile"], "👤")} <b>Твой профиль</b>',
-        "rules": f'{premium_emoji(EMOJI_IDS["rules"], "⛓")} <b>Правила игры</b>',
-        "help": f'{premium_emoji(EMOJI_IDS["help"], "📖")} <b>Помощь</b>',
+        "play": "🎮 <b>Игра началась!</b>",
+        "chat": "💬 <b>Открываем чат...</b>",
+        "profile": "👤 <b>Твой профиль</b>",
+        "rules": "⛓ <b>Правила игры</b>",
+        "help": "📖 <b>Помощь</b>",
     }
     
     await callback.message.edit_text(
@@ -96,8 +91,9 @@ async def handle_buttons(callback: CallbackQuery):
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(
-                    text=f"{premium_emoji(EMOJI_IDS['home'], '🏘')} Назад",
-                    callback_data="back"
+                    text="Назад",
+                    callback_data="back",
+                    icon_custom_emoji_id=EMOJI_IDS["home"]
                 )]
             ]
         )
@@ -107,41 +103,12 @@ async def handle_buttons(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "back")
 async def back_handler(callback: CallbackQuery):
-    welcome = (
-        f'{premium_emoji(EMOJI_IDS["home"], "🏘")} '
-        '<b>Добро пожаловать в @wxs_gamebot</b>\n\n'
-        'Выбери действие:'
-    )
     await callback.message.edit_text(
-        welcome,
+        "🏘 <b>Добро пожаловать в @wxs_gamebot</b>\n\nВыбери действие:",
         parse_mode="HTML",
         reply_markup=main_keyboard()
     )
     await callback.answer()
-
-
-@dp.message()
-async def check_emoji(message: Message):
-    # Проверка всех ID
-    if message.text and message.text.startswith('/check'):
-        result = "Проверка Premium эмодзи:\n\n"
-        for name, emoji_id in EMOJI_IDS.items():
-            test_text = f'{premium_emoji(emoji_id, "❓")} {name}: <code>{emoji_id}</code>'
-            await message.answer(test_text, parse_mode="HTML")
-            result += f"✅ {name}: {emoji_id}\n"
-        await message.answer("✅ Все эмодзи отправлены!")
-        return
-    
-    # Если прислали эмодзи - показываем его ID
-    if message.entities:
-        for entity in message.entities:
-            if entity.type == "custom_emoji":
-                await message.reply(
-                    f"✅ ID этого Premium эмодзи:\n"
-                    f"<code>{entity.custom_emoji_id}</code>",
-                    parse_mode="HTML"
-                )
-                return
 
 
 async def main():
