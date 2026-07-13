@@ -1,65 +1,81 @@
+import asyncio
 from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.enums import ParseMode
 
-bot = Bot(token="8666251391:AAEKjitGiCOkRPpIesqUDK4jCXQUr7T-LO8")
+# Токен бота (лучше хранить в переменных окружения)
+BOT_TOKEN = "8956232681:AAHMiBNrTPiLg-a3ACr-dpZP-yIG9EPJAoE"
+
+# Инициализация бота и диспетчера
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-@dp.message(CommandStart())
+@dp.message(Command("start"))
 async def start(message: types.Message):
-    # Создаём клавиатуру
+    # Создаём клавиатуру с кнопками
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text="Премиум 🎁",  # Текст кнопки
-                callback_data="premium",  # Данные при нажатии
-                style="primary",  # Синий цвет
-                icon_custom_emoji_id="5471952986970267163"  # ID эмодзи: 💎
+                text="Премиум 🎁",
+                callback_data="premium"
             ),
             InlineKeyboardButton(
-                text="Профиль",  # Текст кнопки
-                callback_data="profile",  # Данные при нажатии
-                style="success",  # Зелёный цвет
-                icon_custom_emoji_id="5368324170671202286"  # ID эмодзи: 👤
+                text="Профиль 👤",
+                callback_data="profile"
             ),
         ],
         [
             InlineKeyboardButton(
-                text="Магазин ⭐",  # Текст кнопки
-                callback_data="shop",  # Данные при нажатии
-                icon_custom_emoji_id="547644880824181073"  # ID эмодзи: ⭐
+                text="Магазин ⭐",
+                callback_data="shop"
             ),
             InlineKeyboardButton(
-                text="Задания 🎯",  # Текст кнопки
-                callback_data="tasks",  # Данные при нажатии
-                icon_custom_emoji_id="547528498097861387"  # ID эмодзи: 🎯
+                text="Задания 🎯",
+                callback_data="tasks"
             ),
         ],
         [
             InlineKeyboardButton(
-                text="Удалить ❌",  # Текст кнопки
-                callback_data="delete",  # Данные при нажатии
-                style="danger",  # Красный цвет
-                icon_custom_emoji_id="5310169226856644648"  # ID эмодзи: 🗑
+                text="Удалить ❌",
+                callback_data="delete"
             ),
         ],
     ])
 
-    # Отправляем сообщение с кнопками
-    await message.answer("Выберите действие:", reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    await message.answer(
+        "👋 Добро пожаловать!\nВыберите действие:",
+        reply_markup=keyboard
+    )
 
 @dp.callback_query()
 async def handle_callback(callback: types.CallbackQuery):
-    # Обработка нажатий
+    # Обработка нажатий на кнопки
     if callback.data == "premium":
-        await callback.message.answer("Вы нажали на Премиум кнопку!")
+        await callback.message.answer("🎁 Вы выбрали Премиум!\nДоступны эксклюзивные функции.")
     elif callback.data == "profile":
-        await callback.message.answer("Вы открыли профиль!")
+        await callback.message.answer("👤 Ваш профиль:\nИмя: Пользователь\nСтатус: Обычный")
     elif callback.data == "shop":
-        await callback.message.answer("Вы выбрали магазин!")
+        await callback.message.answer("🛍️ Магазин:\n1. Премиум - 100⭐\n2. Бонусы - 50⭐")
+    elif callback.data == "tasks":
+        await callback.message.answer("🎯 Задания:\n- Пригласи друга\n- Выполни 5 действий")
     elif callback.data == "delete":
-        await callback.message.answer("Вы удалили!")
+        await callback.message.answer("🗑️ Сообщение удалено!")
+        await callback.message.delete()
+    
+    # Подтверждаем получение callback
+    await callback.answer()
 
-# Запуск бота
+@dp.message()
+async def echo(message: types.Message):
+    # Ответ на любые другие сообщения
+    await message.answer(
+        "Используйте команду /start для начала работы с ботом"
+    )
+
+async def main():
+    # Запуск бота
+    print("🚀 Бот запущен!")
+    await dp.start_polling(bot)
+
 if __name__ == "__main__":
-    asyncio.run(dp.start())
+    asyncio.run(main())
