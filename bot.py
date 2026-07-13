@@ -16,7 +16,7 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 
-BOT_TOKEN = "8860793546:AAH_beV2ZjizzMFi1p5jnxDWss4sUMfFzMU"
+BOT_TOKEN = "8804355629:AAH6auh84fLdBhSfQkI_dKBnY9QTa-XXm_k"
 
 CRYPTO_BOT_API_KEY = "548204:AAZOXSPMBWOj3XO29UyRcrxpgxlzujtetPO"
 XROCKET_API_KEY = "c36722e4cae191a22a9097963"
@@ -45,7 +45,6 @@ class PaymentStates(StatesGroup):
     waiting_for_deposit_amount = State() 
     waiting_for_withdraw_amount = State()  
     waiting_for_withdraw_wallet = State()  
-
 
 async def create_crypto_bot_invoice(amount: float, user_id: int) -> str:
     return "https://t.me/CryptoBot"
@@ -85,11 +84,10 @@ def main_keyboard() -> InlineKeyboardMarkup:
                 "icon_custom_emoji_id": "5870994129244131212",
             }
         ],
-      [
+        [
             {
-                "text": "Правила",
+                "text": "🔒 Правила",
                 "url": "https://telegra.ph/Pravila-WXS-game-07-13",
-                "icon_custom_emoji_id": "5296369303661067030",
             },
             {
                 "text": "Помощь",
@@ -102,13 +100,14 @@ def main_keyboard() -> InlineKeyboardMarkup:
 
 def balance_keyboard() -> InlineKeyboardMarkup:
     raw_inline_keyboard = [
-        [{"text": "Пополнить", "callback_data": "dev_mode"}, {"text": "Вывести", "callback_data": "dev_mode"}],
+        [{"text": "🚀 Пополнить", "callback_data": "dev_mode"}, {"text": "👛 Вывести", "callback_data": "dev_mode"}],
         [{"text": "< Назад", "callback_data": "back_to_main"}]
     ]
     return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
 
 def profile_keyboard() -> InlineKeyboardMarkup:
     raw_inline_keyboard = [
+        [{"text": "🚀 Пополнить", "callback_data": "dev_mode"}, {"text": "👛 Вывести", "callback_data": "dev_mode"}],
         [{"text": "Транзакции", "callback_data": "transactions"}],
         [{"text": "Настройки", "callback_data": "settings"}],
         [{"text": "< Назад", "callback_data": "back_to_main"}]
