@@ -146,10 +146,11 @@ def main_keyboard() -> InlineKeyboardMarkup:
                 "icon_custom_emoji_id": "5870994129244131212",
             }
         ],
-        [
+      [
             {
-                "text": '<tg-emoji emoji-id="5296369303661067030">🔒</tg-emoji> Правила',
+                "text": "Правила",
                 "url": "https://telegra.ph/Pravila-WXS-game-07-13",
+                "icon_custom_emoji_id": "5296369303661067030",
             },
             {
                 "text": "Помощь",
