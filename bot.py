@@ -18,7 +18,8 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ID кастомных премиум эмодзи (замени на свои)
+# ID премиум эмодзи (работают без Premium у бота)
+# Можно использовать любые ID, найденные в интернете
 CUSTOM_EMOJIS = {
     "fire": "5472419592217332357",
     "play": "5471895876790161593",
