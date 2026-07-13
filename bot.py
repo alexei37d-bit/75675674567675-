@@ -118,7 +118,7 @@ async def send_crypto_bot_payout(amount: float, target_user_id: int) -> bool:
 
 # Огонь заменен на твой премиум алмаз
 WELCOME_TEXT = (
-    '<b> <tg-emoji emoji-id="5427168083074628963">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>'
+    '<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>'
 )
 
 def reply_main_keyboard() -> ReplyKeyboardMarkup:
@@ -146,11 +146,17 @@ def main_keyboard() -> InlineKeyboardMarkup:
                 "icon_custom_emoji_id": "5870994129244131212",
             }
         ],
-        [
+            [
             {
-                "text": "П<tg-emoji emoji-id=\"5296369303661067030\">🔒</tg-emoji>авила",
+                "text": '<tg-emoji emoji-id="5296369303661067030">🔒</tg-emoji> Правила',
                 "url": "https://telegra.ph/Pravila-WXS-game-07-13",
             },
+            {
+                "text": "Помощь",
+                "callback_data": "help",
+                "icon_custom_emoji_id": "6028435952299413210",
+            },
+        ],
             {
                 "text": "Помощь",
                 "callback_data": "help",
