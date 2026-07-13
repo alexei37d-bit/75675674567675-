@@ -116,8 +116,9 @@ async def send_crypto_bot_payout(amount: float, target_user_id: int) -> bool:
 
 # --- Тексты и Клавиатуры ---
 
+# Огонь заменен на твой премиум алмаз
 WELCOME_TEXT = (
-    '<b> <tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>'
+    '<b> <tg-emoji emoji-id="5427168083074628963">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>'
 )
 
 def reply_main_keyboard() -> ReplyKeyboardMarkup:
@@ -206,7 +207,8 @@ async def start_handler(message: Message):
         reply_markup=reply_main_keyboard(),
     )
     await message.answer(
-        "⚡ Главное меню проекта:",
+        '<tg-emoji emoji-id="5278413853577734640">🏠</tg-emoji> Главное меню проекта:',
+        parse_mode="HTML",
         reply_markup=main_keyboard()
     )
 
