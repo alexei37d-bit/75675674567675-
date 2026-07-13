@@ -112,8 +112,8 @@ def balance_keyboard() -> InlineKeyboardMarkup:
 def profile_keyboard() -> InlineKeyboardMarkup:
     raw_inline_keyboard = [
         [
-            {"text": "Пополнить", "callback_data": "dev_mode", "icon_custom_emoji_id": "5415897719522744378"}, 
-            {"text": "Вывести", "callback_data": "dev_mode", "icon_custom_emoji_id": "5361914370068613491"}
+       {"text": "Пополнить", "callback_data": "dev_mode", "icon_custom_emoji_id": "5206401524200145033"}, 
+            {"text": "Вывести", "callback_data": "dev_mode", "icon_custom_emoji_id": "5206510891247371052"}
         ],
         [{"text": "Транзакции", "callback_data": "transactions"}],
         [{"text": "Настройки", "callback_data": "settings"}],
