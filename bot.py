@@ -16,10 +16,8 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 
-# Токен взят из первой структуры (исправленный рабочий токен)
 BOT_TOKEN = "8860793546:AAH_beV2ZjizzMFi1p5jnxDWss4sUMfFzMU"
 
-# Реальные токены платежных систем
 CRYPTO_BOT_API_KEY = "548204:AAZOXSPMBWOj3XO29UyRcrxpgxlzujtetPO"
 XROCKET_API_KEY = "c36722e4cae191a22a9097963"
 
@@ -28,7 +26,6 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Имитация БД пользователей
 USERS_DB = {}
 
 def get_or_create_user(user_id: int, full_name: str) -> dict:
@@ -44,13 +41,11 @@ def get_or_create_user(user_id: int, full_name: str) -> dict:
         }
     return USERS_DB[user_id]
 
-# Определение состояний FSM для платежной системы
 class PaymentStates(StatesGroup):
-    waiting_for_deposit_amount = State()   # Ожидание суммы пополнения
-    waiting_for_withdraw_amount = State()  # Ожидание суммы вывода
-    waiting_for_withdraw_wallet = State()  # Ожидание адреса/ID кошелька для вывода
+    waiting_for_deposit_amount = State() 
+    waiting_for_withdraw_amount = State()  
+    waiting_for_withdraw_wallet = State()  
 
-# --- Вспомогательные функции API запросов ---
 
 async def create_crypto_bot_invoice(amount: float, user_id: int) -> str:
     return "https://t.me/CryptoBot"
@@ -60,8 +55,6 @@ async def create_xrocket_invoice(amount: float, user_id: int) -> str:
 
 async def send_crypto_bot_payout(amount: float, target_user_id: int) -> bool:
     return False
-
-# --- Тексты и Клавиатуры ---
 
 WELCOME_TEXT = (
     '<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>'
@@ -132,8 +125,6 @@ def get_profile_message(user: dict) -> str:
         f"⬆️ <b>Выводов:</b> {user['withdrawals']:.2f} $"
     )
 
-# --- Хэндлеры текстовых команд ---
-
 @dp.message(CommandStart())
 async def start_handler(message: Message):
     get_or_create_user(message.from_user.id, message.from_user.full_name)
@@ -162,8 +153,6 @@ async def reply_menu_handler(message: Message):
 async def reply_play_handler(message: Message):
     await message.answer("🎰 Раздел с играми находится в разработке!")
 
-# --- Хэндлеры инлайн-меню и профиля ---
-
 @dp.callback_query(F.data == "profile")
 async def profile_handler(callback: CallbackQuery):
     user = get_or_create_user(callback.from_user.id, callback.from_user.full_name)
@@ -173,8 +162,6 @@ async def profile_handler(callback: CallbackQuery):
 @dp.callback_query(F.data == "dev_mode")
 async def dev_mode_handler(callback: CallbackQuery):
     await callback.answer("Технические работы: функционал временно недоступен", show_alert=True)
-
-# --- Заглушки и навигация назад ---
 
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_handler(callback: CallbackQuery):
