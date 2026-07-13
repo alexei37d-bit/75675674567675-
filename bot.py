@@ -207,7 +207,7 @@ async def start_handler(message: Message):
         reply_markup=reply_main_keyboard(),
     )
     await message.answer(
-        '<tg-emoji emoji-id="5278413853577734640">🏠</tg-emoji> Главное меню проекта:',
+        '<tg-emoji emoji-id="5463225256942539355">🏠</tg-emoji> Главное меню проекта:',
         parse_mode="HTML",
         reply_markup=main_keyboard()
     )
