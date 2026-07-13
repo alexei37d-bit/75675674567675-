@@ -176,8 +176,6 @@ async def back_to_main_handler(callback: CallbackQuery):
 async def silent_callback(callback: CallbackQuery):
     await callback.answer("Эта функция сейчас в разработке!", show_alert=False)
 
-# ================= НОВЫЙ КОД (ПОПОЛНЕНИЕ, ВЫВОД И АДМИНКА) =================
-
 @dp.callback_query(F.data == "deposit_select")
 async def select_deposit_method(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -210,21 +208,17 @@ async def process_deposit_amount(message: Message, state: FSMContext):
     data = await state.get_data()
     method = data.get("deposit_method")
     
-    # Использование статических ссылок и хешей
     if method == "crypto":
         invoice_url = "http://t.me/send?start=IVL1pjPkm04v"
-        invoice_hash = "IVL1pjPkm04v"
-    elif method == "xrocket":
+    else:
         invoice_url = "https://t.me/xrocket?start=inv_ltGmVOFnRWoVk9U"
-        invoice_hash = "inv_ltGmVOFnRWoVk9U"
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Оплатить счет", url=invoice_url)],
-        [InlineKeyboardButton(text="Проверить оплату", callback_data=f"check_dep_{method}_{invoice_hash}_{amount}")]
+        [InlineKeyboardButton(text="Проверить оплату", callback_data=f"check_dep_{amount}")]
     ])
     await message.answer(
-        f"Оплата на сумму <b>{amount} $</b>\n"
-        f"Перейдите по ссылке ниже и оплатите счет. После оплаты нажмите «Проверить оплату».", 
+        f"Оплата на сумму <b>{amount} $</b>\nПерейдите по ссылке и после оплаты нажмите «Проверить оплату».", 
         parse_mode="HTML",
         reply_markup=kb
     )
@@ -232,15 +226,10 @@ async def process_deposit_amount(message: Message, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("check_dep_"))
 async def check_deposit_status(callback: CallbackQuery):
-    parts = callback.data.split("_")
-    amount = float(parts[4])
-    user_id = callback.from_user.id
-    
-    # Сразу выдаем баланс по нажатию без API проверки
-    user = get_or_create_user(user_id, callback.from_user.full_name)
+    amount = float(callback.data.split("_")[2])
+    user = get_or_create_user(callback.from_user.id, callback.from_user.full_name)
     user["balance"] += amount
     user["deposits"] += amount
-    
     await callback.message.edit_text(f"✅ Пополнение на {amount} $ успешно зачислено!")
     await callback.answer()
 
