@@ -35,31 +35,26 @@ def main_keyboard():
                 InlineKeyboardButton(
                     text="Играть",
                     callback_data="play",
-                    icon_custom_emoji_id=EMOJI_IDS["play"]  # 🔥 КАСТОМНЫЙ ЭМОДЗИ В ИКОНКЕ
                 ),
                 InlineKeyboardButton(
                     text="Чат",
                     callback_data="chat",
-                    icon_custom_emoji_id=EMOJI_IDS["chat"]
                 ),
             ],
             [
                 InlineKeyboardButton(
                     text="Профиль",
                     callback_data="profile",
-                    icon_custom_emoji_id=EMOJI_IDS["profile"]
                 ),
             ],
             [
                 InlineKeyboardButton(
                     text="Правила",
                     callback_data="rules",
-                    icon_custom_emoji_id=EMOJI_IDS["rules"]
                 ),
                 InlineKeyboardButton(
                     text="Помощь",
                     callback_data="help",
-                    icon_custom_emoji_id=EMOJI_IDS["help"]
                 ),
             ],
         ]
@@ -68,8 +63,19 @@ def main_keyboard():
 
 @dp.message(CommandStart())
 async def start_handler(message: Message):
+    # ПРАВИЛЬНЫЙ СПОСОБ - через tg-emoji в HTML
+    welcome_text = f"""<b><tg-emoji emoji-id="{EMOJI_IDS['home']}">🏘</tg-emoji> Добро пожаловать, {message.from_user.first_name}!</b>
+
+<tg-emoji emoji-id="{EMOJI_IDS['play']}">🎮</tg-emoji> <b>Играй</b> - участвуй в играх и соревнованиях
+<tg-emoji emoji-id="{EMOJI_IDS['chat']}">💬</tg-emoji> <b>Общайся</b> - общайся с другими игроками
+<tg-emoji emoji-id="{EMOJI_IDS['profile']}">👤</tg-emoji> <b>Профиль</b> - смотри свою статистику
+<tg-emoji emoji-id="{EMOJI_IDS['rules']}">⛓</tg-emoji> <b>Правила</b> - узнай правила игры
+<tg-emoji emoji-id="{EMOJI_IDS['help']}">📖</tg-emoji> <b>Помощь</b> - получи помощь
+
+<i>Выбери действие ниже:</i>"""
+
     await message.answer(
-        "🏘 <b>Добро пожаловать в @wxs_gamebot</b>\n\nВыбери действие:",
+        welcome_text,
         parse_mode="HTML",
         reply_markup=main_keyboard(),
     )
@@ -78,23 +84,32 @@ async def start_handler(message: Message):
 @dp.callback_query(F.data.in_({"play", "chat", "profile", "rules", "help"}))
 async def handle_buttons(callback: CallbackQuery):
     messages = {
-        "play": "🎮 <b>Игра началась!</b>",
-        "chat": "💬 <b>Открываем чат...</b>",
-        "profile": "👤 <b>Твой профиль</b>",
-        "rules": "⛓ <b>Правила игры</b>",
-        "help": "📖 <b>Помощь</b>",
+        "play": f"""<tg-emoji emoji-id="{EMOJI_IDS['play']}">🎮</tg-emoji> <b>Игра началась!</b>
+
+Выбери режим игры и начни соревноваться!""",
+        "chat": f"""<tg-emoji emoji-id="{EMOJI_IDS['chat']}">💬</tg-emoji> <b>Общий чат</b>
+
+Здесь ты можешь общаться с другими игроками.""",
+        "profile": f"""<tg-emoji emoji-id="{EMOJI_IDS['profile']}">👤</tg-emoji> <b>Твой профиль</b>
+
+Имя: {callback.from_user.first_name}
+ID: {callback.from_user.id}""",
+        "rules": f"""<tg-emoji emoji-id="{EMOJI_IDS['rules']}">⛓</tg-emoji> <b>Правила игры</b>
+
+1. Будь вежливым
+2. Не спамить
+3. Наслаждайся игрой!""",
+        "help": f"""<tg-emoji emoji-id="{EMOJI_IDS['help']}">📖</tg-emoji> <b>Помощь</b>
+
+Если у тебя возникли вопросы - напиши @support"""
     }
     
     await callback.message.edit_text(
-        messages.get(callback.data, "❓ Неизвестно"),
+        messages.get(callback.data, "❓ Неизвестная команда"),
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(
-                    text="Назад",
-                    callback_data="back",
-                    icon_custom_emoji_id=EMOJI_IDS["home"]
-                )]
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="back")]
             ]
         )
     )
@@ -103,12 +118,45 @@ async def handle_buttons(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "back")
 async def back_handler(callback: CallbackQuery):
+    welcome_text = f"""<b><tg-emoji emoji-id="{EMOJI_IDS['home']}">🏘</tg-emoji> Добро пожаловать, {callback.from_user.first_name}!</b>
+
+<tg-emoji emoji-id="{EMOJI_IDS['play']}">🎮</tg-emoji> <b>Играй</b> - участвуй в играх и соревнованиях
+<tg-emoji emoji-id="{EMOJI_IDS['chat']}">💬</tg-emoji> <b>Общайся</b> - общайся с другими игроками
+<tg-emoji emoji-id="{EMOJI_IDS['profile']}">👤</tg-emoji> <b>Профиль</b> - смотри свою статистику
+<tg-emoji emoji-id="{EMOJI_IDS['rules']}">⛓</tg-emoji> <b>Правила</b> - узнай правила игры
+<tg-emoji emoji-id="{EMOJI_IDS['help']}">📖</tg-emoji> <b>Помощь</b> - получи помощь
+
+<i>Выбери действие ниже:</i>"""
+
     await callback.message.edit_text(
-        "🏘 <b>Добро пожаловать в @wxs_gamebot</b>\n\nВыбери действие:",
+        welcome_text,
         parse_mode="HTML",
         reply_markup=main_keyboard()
     )
     await callback.answer()
+
+
+# Проверка ID
+@dp.message()
+async def check_emoji(message: Message):
+    if message.text and message.text.startswith('/check'):
+        result = "Проверка Premium эмодзи:\n\n"
+        for name, emoji_id in EMOJI_IDS.items():
+            test_text = f'<tg-emoji emoji-id="{emoji_id}">❓</tg-emoji> {name}: <code>{emoji_id}</code>'
+            await message.answer(test_text, parse_mode="HTML")
+        await message.answer("✅ Все эмодзи отправлены!")
+        return
+    
+    # Если прислали эмодзи - показываем его ID
+    if message.entities:
+        for entity in message.entities:
+            if entity.type == "custom_emoji":
+                await message.reply(
+                    f"✅ ID этого Premium эмодзи:\n"
+                    f"<code>{entity.custom_emoji_id}</code>",
+                    parse_mode="HTML"
+                )
+                return
 
 
 async def main():
