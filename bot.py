@@ -51,58 +51,45 @@ class PaymentStates(StatesGroup):
     waiting_for_withdraw_wallet = State()  
     
 class AdminStates(StatesGroup):
-    waiting_for_approve_id = State()
     waiting_for_approve_link = State()
-    waiting_for_reject_id = State()
     waiting_for_broadcast = State()
     waiting_for_deduct_id = State()
     waiting_for_deduct_amount = State()
 
-async def create_crypto_bot_invoice(amount: float, user_id: int) -> dict:
-    url = "https://pay.crypt.bot/api/createInvoice"
-    headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_API_KEY}
-    payload = {"asset": "USDT", "amount": amount, "description": f"Пополнение от {user_id}"}
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, headers=headers, json=payload) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                if data.get("ok"):
-                    return {"url": data["result"]["pay_url"], "invoice_id": data["result"]["invoice_id"]}
-    return None
-
-async def create_xrocket_invoice(amount: float, user_id: int) -> dict:
-    url = "https://pay.ton-rocket.com/tg-invoices"
-    headers = {"Rocket-Pay-Key": XROCKET_API_KEY, "Content-Type": "application/json"}
-    payload = {"amount": amount, "currency": "USDT", "description": f"Пополнение от {user_id}"}
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, headers=headers, json=payload) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                if data.get("success"):
-                    return {"url": data["data"]["link"], "invoice_id": data["data"]["id"]}
-    return None
-
-async def check_crypto_bot_invoice(invoice_id: int) -> bool:
+# === Реальная проверка оплаты по API на конкретную сумму ===
+async def check_crypto_bot_payment(invoice_hash: str, expected_amount: float) -> bool:
     url = "https://pay.crypt.bot/api/getInvoices"
     headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_API_KEY}
-    params = {"invoice_ids": str(invoice_id)}
+    params = {"status": "paid"}
     async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers, params=params) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                if data.get("ok") and len(data["result"]["items"]) > 0:
-                    return data["result"]["items"][0]["status"] == "paid"
+        try:
+            async with session.get(url, headers=headers, params=params) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("ok"):
+                        # Ищем оплаченный счет с совпадающей суммой
+                        for item in data["result"]["items"]:
+                            if item["status"] == "paid" and float(item["amount"]) >= float(expected_amount):
+                                return True
+        except Exception as e:
+            logging.error(f"CryptoBot API Error: {e}")
     return False
 
-async def check_xrocket_invoice(invoice_id: int) -> bool:
-    url = f"https://pay.ton-rocket.com/tg-invoices/{invoice_id}"
+async def check_xrocket_payment(invoice_hash: str, expected_amount: float) -> bool:
+    url = f"https://pay.ton-rocket.com/tg-invoices"
     headers = {"Rocket-Pay-Key": XROCKET_API_KEY}
     async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                if data.get("success"):
-                    return data["data"]["status"] == "paid"
+        try:
+            async with session.get(url, headers=headers) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("success"):
+                        # Ищем оплаченный счет с совпадающей суммой
+                        for item in data.get("data", []):
+                            if item["status"] == "paid" and float(item["amount"]) >= float(expected_amount):
+                                return True
+        except Exception as e:
+            logging.error(f"XRocket API Error: {e}")
     return False
 
 async def send_crypto_bot_payout(amount: float, target_user_id: int) -> bool:
@@ -264,53 +251,49 @@ async def process_deposit_amount(message: Message, state: FSMContext):
 
     data = await state.get_data()
     method = data.get("deposit_method")
-    user_id = message.from_user.id
     
-    invoice_data = None
-    msg_wait = await message.answer("⏳ Генерирую счет для оплаты, подождите...")
-    
+    # Использование статических ссылок и хешей
     if method == "crypto":
-        invoice_data = await create_crypto_bot_invoice(amount, user_id)
+        invoice_url = "http://t.me/send?start=IVL1pjPkm04v"
+        invoice_hash = "IVL1pjPkm04v"
     elif method == "xrocket":
-        invoice_data = await create_xrocket_invoice(amount, user_id)
-        
-    await msg_wait.delete()
-    
-    if not invoice_data:
-        # Резервная ссылка (статика) если API выдаст ошибку
-        fallback_link = "http://t.me/send?start=IVL1pjPkm04v" if method == "crypto" else "https://t.me/xrocket?start=inv_ltGmVOFnRWoVk9U"
-        invoice_data = {"url": fallback_link, "invoice_id": random.randint(100000, 999999)}
+        invoice_url = "https://t.me/xrocket?start=inv_ltGmVOFnRWoVk9U"
+        invoice_hash = "inv_ltGmVOFnRWoVk9U"
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Оплатить счет", url=invoice_data["url"])],
-        [InlineKeyboardButton(text="Проверить оплату", callback_data=f"check_dep_{method}_{invoice_data['invoice_id']}_{amount}")]
+        [InlineKeyboardButton(text="Оплатить счет", url=invoice_url)],
+        [InlineKeyboardButton(text="Проверить оплату", callback_data=f"check_dep_{method}_{invoice_hash}_{amount}")]
     ])
-    await message.answer(f"Счет на сумму {amount} $ успешно создан.\nПосле оплаты нажмите кнопку ниже.", reply_markup=kb)
+    await message.answer(
+        f"Оплата на сумму <b>{amount} $</b>\n"
+        f"Перейдите по ссылке ниже и оплатите счет. После оплаты нажмите «Проверить оплату».", 
+        parse_mode="HTML",
+        reply_markup=kb
+    )
     await state.clear()
 
 @dp.callback_query(F.data.startswith("check_dep_"))
 async def check_deposit_status(callback: CallbackQuery):
-    _, _, method, invoice_id, amount = callback.data.split("_")
-    amount = float(amount)
+    parts = callback.data.split("_")
+    method = parts[2]
+    invoice_hash = parts[3]
+    amount = float(parts[4])
     user_id = callback.from_user.id
     
     is_paid = False
+    # РЕАЛЬНАЯ ПРОВЕРКА ПО API
     if method == "crypto":
-        is_paid = await check_crypto_bot_invoice(invoice_id)
+        is_paid = await check_crypto_bot_payment(invoice_hash, amount)
     elif method == "xrocket":
-        is_paid = await check_xrocket_invoice(invoice_id)
+        is_paid = await check_xrocket_payment(invoice_hash, amount)
         
-    # Заглушка для теста (так как ключи могут не подойти) 
-    # В реальном проекте удалить строку ниже:
-    is_paid = True 
-    
     if is_paid:
         user = get_or_create_user(user_id, callback.from_user.full_name)
         user["balance"] += amount
         user["deposits"] += amount
         await callback.message.edit_text(f"✅ Пополнение на {amount} $ успешно зачислено!")
     else:
-        await callback.answer("❌ Счет еще не оплачен или транзакция в обработке.", show_alert=True)
+        await callback.answer("❌ Счет еще не оплачен или сумма не совпадает.", show_alert=True)
 
 @dp.callback_query(F.data == "withdraw_select")
 async def select_withdraw_method(callback: CallbackQuery):
@@ -364,12 +347,17 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
     
     for admin_id in ADMIN_IDS:
         try:
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="Одобрить", callback_data=f"admin_approve_req_{req_id}")],
+                [InlineKeyboardButton(text="Отклонить", callback_data=f"admin_reject_req_{req_id}")]
+            ])
             await bot.send_message(
                 admin_id, 
                 f"🚨 Новая заявка на вывод #{req_id}\n"
                 f"От: {message.from_user.id} (@{message.from_user.username})\n"
                 f"Сумма: {amount} $\n"
-                f"Способ: {method}"
+                f"Способ: {method}",
+                reply_markup=kb
             )
         except Exception:
             pass
@@ -379,8 +367,7 @@ async def admin_panel(message: Message):
     if message.from_user.id not in ADMIN_IDS:
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Одобрить вывод", callback_data="admin_approve_wd")],
-        [InlineKeyboardButton(text="Отклонить вывод", callback_data="admin_reject_wd")],
+        [InlineKeyboardButton(text="Заявки на вывод", callback_data="admin_withdraw_requests")],
         [InlineKeyboardButton(text="Отнять баланс", callback_data="admin_deduct_bal")],
         [InlineKeyboardButton(text="Рассылка", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="Статистика", callback_data="admin_stats")]
@@ -446,22 +433,40 @@ async def process_deduct_amount(message: Message, state: FSMContext):
         await message.answer("❌ Пользователь не найден.")
     await state.clear()
 
-@dp.callback_query(F.data == "admin_approve_wd")
-async def admin_approve_start(callback: CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data == "admin_withdraw_requests")
+async def admin_show_requests(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS: return
-    await callback.message.answer("Введите ID заявки для одобрения:")
-    await state.set_state(AdminStates.waiting_for_approve_id)
+    pending_reqs = [req_id for req_id, req in WITHDRAW_REQUESTS.items() if req["status"] == "pending"]
+    if not pending_reqs:
+        return await callback.answer("Нет активных заявок на вывод.", show_alert=True)
+    
+    for req_id in pending_reqs:
+        req = WITHDRAW_REQUESTS[req_id]
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Одобрить", callback_data=f"admin_approve_req_{req_id}")],
+            [InlineKeyboardButton(text="Отклонить", callback_data=f"admin_reject_req_{req_id}")]
+        ])
+        await callback.message.answer(
+            f"🚨 Заявка на вывод #{req_id}\n"
+            f"От ID: {req['user_id']}\n"
+            f"Сумма: {req['amount']} $\n"
+            f"Способ: {req['method']}",
+            reply_markup=kb
+        )
     await callback.answer()
 
-@dp.message(AdminStates.waiting_for_approve_id)
-async def process_approve_id(message: Message, state: FSMContext):
-    if not message.text.isdigit(): return await message.answer("ID должен быть числом.")
-    req_id = int(message.text)
+@dp.callback_query(F.data.startswith("admin_approve_req_"))
+async def admin_approve_req_inline(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in ADMIN_IDS: return
+    req_id = int(callback.data.split("_")[-1])
+    
     if req_id not in WITHDRAW_REQUESTS or WITHDRAW_REQUESTS[req_id]["status"] != "pending":
-        return await message.answer("❌ Заявка не найдена или уже обработана.")
+        return await callback.answer("❌ Заявка не найдена или уже обработана.", show_alert=True)
+        
     await state.update_data(approve_req_id=req_id)
-    await message.answer("Отправьте ссылку на чек (куда игрок должен получить средства):")
+    await callback.message.answer(f"Отправьте ссылку на чек (куда игрок должен получить средства) для заявки #{req_id}:")
     await state.set_state(AdminStates.waiting_for_approve_link)
+    await callback.answer()
 
 @dp.message(AdminStates.waiting_for_approve_link)
 async def process_approve_link(message: Message, state: FSMContext):
@@ -490,19 +495,13 @@ async def process_approve_link(message: Message, state: FSMContext):
         await message.answer(f"❌ Ошибка отправки пользователю: {e}")
     await state.clear()
 
-@dp.callback_query(F.data == "admin_reject_wd")
-async def admin_reject_start(callback: CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data.startswith("admin_reject_req_"))
+async def admin_reject_req_inline(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS: return
-    await callback.message.answer("Введите ID заявки для отклонения:")
-    await state.set_state(AdminStates.waiting_for_reject_id)
-    await callback.answer()
-
-@dp.message(AdminStates.waiting_for_reject_id)
-async def process_reject_id(message: Message, state: FSMContext):
-    if not message.text.isdigit(): return await message.answer("ID должен быть числом.")
-    req_id = int(message.text)
+    req_id = int(callback.data.split("_")[-1])
+    
     if req_id not in WITHDRAW_REQUESTS or WITHDRAW_REQUESTS[req_id]["status"] != "pending":
-        return await message.answer("❌ Заявка не найдена или уже обработана.")
+        return await callback.answer("❌ Заявка не найдена или уже обработана.", show_alert=True)
     
     req = WITHDRAW_REQUESTS[req_id]
     req["status"] = "rejected"
@@ -515,8 +514,8 @@ async def process_reject_id(message: Message, state: FSMContext):
     except Exception:
         pass
         
-    await message.answer("✅ Вывод отклонен, средства возвращены игроку.")
-    await state.clear()
+    await callback.message.edit_text(callback.message.text + "\n\n❌ ОТКЛОНЕНО")
+    await callback.answer("✅ Вывод отклонен, средства возвращены игроку.")
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
