@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
 
-BOT_TOKEN = "8666251391:AAEKjitGiCOkRPpIesqUDK4jCXQUr7T-LO8"
+BOT_TOKEN = "8860793546:AAH_beV2ZjizzMFi1p5jnxDWss4sUMfFzMU"
 
 logging.basicConfig(level=logging.INFO)
 
