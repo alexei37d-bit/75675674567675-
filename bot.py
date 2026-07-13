@@ -45,7 +45,7 @@ def main_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="Профиль",
                     callback_data="profile",
-                    icon_custom_emoji_id="5368324151742332134",  # Иконка юзера
+                    icon_custom_emoji_id=" 5769126056262898415",  # Иконка юзера
                 ),
             ],
             [
@@ -57,7 +57,7 @@ def main_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     text="Помощь",
                     callback_data="help",
-                    icon_custom_emoji_id="5373177693724504141",  # Знак вопроса
+                    icon_custom_emoji_id="6028435952299413210",  # Знак вопроса
                 ),
             ],
         ]
