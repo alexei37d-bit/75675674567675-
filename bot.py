@@ -10,7 +10,7 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 
-# Вставь сюда токен своего бота, полученный от @BotFather
+# Вставь сюда токен своего бота
 BOT_TOKEN = "8666251391:AAEKjitGiCOkRPpIesqUDK4jCXQUr7T-LO8"
 
 logging.basicConfig(level=logging.INFO)
@@ -18,56 +18,58 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Текст приветствия. Кастомный эмодзи (premium-эмодзи) вставляется через
-# HTML-тег <tg-emoji emoji-id="...">, parse_mode должен быть "HTML".
-# У пользователей без Telegram Premium вместо кастомного эмодзи покажется
-# обычный emoji-фолбэк, указанный внутри тега (здесь — 🔥).
+# ID кастомных премиум эмодзи (замени на свои)
+CUSTOM_EMOJIS = {
+    "fire": "5472419592217332357",
+    "play": "5471895876790161593",
+    "chat": "5235931189591710436",
+    "profile": "5197514090108456970",
+    "rules": "5199867405769151212",
+    "help": "5199560697859577006",
+}
+
 WELCOME_TEXT = (
-    '<tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> '
+    f'<tg-emoji emoji-id="{CUSTOM_EMOJIS["fire"]}">🔥</tg-emoji> '
     "<b>Добро пожаловать в @wxs_gamebot</b>"
 )
 
 
 def main_keyboard() -> InlineKeyboardMarkup:
-    # Bot API 9.4+: icon_custom_emoji_id показывает кастомный premium-эмодзи
-    # перед текстом кнопки. Работает только если у владельца бота есть
-    # активная подписка Telegram Premium (или куплены доп. юзернеймы на Fragment).
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="Играть",
                     callback_data="play",
-                    icon_custom_emoji_id="5471895876790161593",
+                    icon_custom_emoji_id=CUSTOM_EMOJIS["play"],
                 ),
                 InlineKeyboardButton(
                     text="Чат",
                     callback_data="chat",
-                    icon_custom_emoji_id="5235931189591710436",
+                    icon_custom_emoji_id=CUSTOM_EMOJIS["chat"],
                 ),
             ],
             [
                 InlineKeyboardButton(
                     text="Профиль",
                     callback_data="profile",
-                    icon_custom_emoji_id="5197514090108456970",
+                    icon_custom_emoji_id=CUSTOM_EMOJIS["profile"],
                 ),
             ],
             [
                 InlineKeyboardButton(
                     text="Правила",
                     callback_data="rules",
-                    icon_custom_emoji_id="5199867405769151212",
+                    icon_custom_emoji_id=CUSTOM_EMOJIS["rules"],
                 ),
                 InlineKeyboardButton(
                     text="Помощь",
                     callback_data="help",
-                    icon_custom_emoji_id="5199560697859577006",
+                    icon_custom_emoji_id=CUSTOM_EMOJIS["help"],
                 ),
             ],
         ]
     )
-
 
 
 @dp.message(CommandStart())
@@ -79,11 +81,9 @@ async def start_handler(message: Message):
     )
 
 
-# Единый обработчик для всех кнопок: он ничего не делает,
-# просто "гасит" часики на кнопке и молчит.
 @dp.callback_query(F.data.in_({"play", "chat", "profile", "rules", "help"}))
 async def silent_callback(callback: CallbackQuery):
-    await callback.answer()  # без текста и без всплывающего окна
+    await callback.answer()
 
 
 async def main():
