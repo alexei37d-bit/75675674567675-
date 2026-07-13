@@ -10,7 +10,7 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 
-# ⚠️ Вставь сюда свой токен бота из @BotFather
+# Токен из твоих логов уже внутри, ничего менять не нужно
 BOT_TOKEN = "8364120048:AAFE8DkMaaTt8_MgYoJQkHVsiG41Cg_AZIo"
 
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Текст приветствия с премиум-эмодзи
+# Приветственный текст с премиум-эмодзи
 WELCOME_TEXT = (
     '<tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> '
     "<b>Добро пожаловать в @wxs_gamebot</b>"
@@ -26,7 +26,7 @@ WELCOME_TEXT = (
 
 
 def main_keyboard() -> InlineKeyboardMarkup:
-    # ИСПРАВЛЕНО: Убрали кавычки у всех icon_custom_emoji_id, теперь это числа (int)
+    # Здесь кавычки убраны на 100%. Telegram примет эти ID как чистые числа (Number)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
