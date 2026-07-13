@@ -2,7 +2,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.enums import ParseMode
 
-bot = Bot(token="YOUR_BOT_TOKEN")
+bot = Bot(token="8666251391:AAEKjitGiCOkRPpIesqUDK4jCXQUr7T-LO8")
 dp = Dispatcher()
 
 @dp.message(CommandStart())
