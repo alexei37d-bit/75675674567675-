@@ -147,10 +147,11 @@ def main_keyboard() -> InlineKeyboardMarkup:
             }
         ],
         [
+            # Кнопка с переходом по ссылке и вашим эмодзи
             {
                 "text": "Правила",
-                "callback_data": "rules",
-                "icon_custom_emoji_id": "5199867405769151212",
+                "url": "https://telegra.ph/Pravila-WXS-game-07-13",
+                "icon_custom_emoji_id": "5296369303661067030",
             },
             {
                 "text": "Помощь",
@@ -159,7 +160,19 @@ def main_keyboard() -> InlineKeyboardMarkup:
             },
         ],
     ]
-    return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
+    # Преобразуем словарь в объекты InlineKeyboardButton
+    keyboard = []
+    for row in raw_inline_keyboard:
+        new_row = []
+        for btn in row:
+            # Если есть URL, создаем кнопку-ссылку, иначе callback
+            if "url" in btn:
+                new_row.append(InlineKeyboardButton(text=f'<tg-emoji emoji-id="{btn["icon_custom_emoji_id"]}">{btn["text"]}</tg-emoji>', url=btn["url"]))
+            else:
+                new_row.append(InlineKeyboardButton(text=f'<tg-emoji emoji-id="{btn["icon_custom_emoji_id"]}">{btn["text"]}</tg-emoji>', callback_data=btn["callback_data"]))
+        keyboard.append(new_row)
+    
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 def profile_keyboard() -> InlineKeyboardMarkup:
     raw_inline_keyboard = [
