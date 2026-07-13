@@ -1,16 +1,16 @@
 import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
+from aiogram.filters import Command  # <-- ВАЖНО: импортируем Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Токен бота (лучше хранить в переменных окружения)
+# Токен бота
 BOT_TOKEN = "8956232681:AAHMiBNrTPiLg-a3ACr-dpZP-yIG9EPJAoE"
 
 # Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-@dp.message(Command("start"))
+@dp.message(Command("start"))  # <-- ИСПРАВЛЕНО: используем Command("start")
 async def start(message: types.Message):
     # Создаём клавиатуру с кнопками
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
