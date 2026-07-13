@@ -50,7 +50,7 @@ async def create_crypto_bot_invoice(amount: float, user_id: int) -> str:
     return "https://t.me/CryptoBot"
 
 async def create_xrocket_invoice(amount: float, user_id: int) -> str:
-    return "https://t.me/RocketWalletBot"
+    return "https://t.me/Xrocket"
 
 async def send_crypto_bot_payout(amount: float, target_user_id: int) -> bool:
     return False
@@ -102,8 +102,8 @@ def main_keyboard() -> InlineKeyboardMarkup:
 def balance_keyboard() -> InlineKeyboardMarkup:
     raw_inline_keyboard = [
         [
-            {"text": "Пополнить", "callback_data": "dev_mode", "icon_custom_emoji_id": "5415897719522744378"}, 
-            {"text": "Вывести", "callback_data": "dev_mode", "icon_custom_emoji_id": "5361914370068613491"}
+            {"text": "Пополнить", "callback_data": "dev_mode", "icon_custom_emoji_id": "5206401524200145033"}, 
+            {"text": "Вывести", "callback_data": "dev_mode", "icon_custom_emoji_id": "5206510891247371052"}
         ],
         [{"text": "< Назад", "callback_data": "back_to_main"}]
     ]
