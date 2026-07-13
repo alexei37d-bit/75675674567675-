@@ -147,11 +147,9 @@ def main_keyboard() -> InlineKeyboardMarkup:
             }
         ],
         [
-            # Кнопка с переходом по ссылке и вашим эмодзи
             {
-                "text": "Правила",
+                "text": "П<tg-emoji emoji-id=\"5296369303661067030\">🔒</tg-emoji>авила",
                 "url": "https://telegra.ph/Pravila-WXS-game-07-13",
-                "icon_custom_emoji_id": "5296369303661067030",
             },
             {
                 "text": "Помощь",
@@ -160,19 +158,7 @@ def main_keyboard() -> InlineKeyboardMarkup:
             },
         ],
     ]
-    # Преобразуем словарь в объекты InlineKeyboardButton
-    keyboard = []
-    for row in raw_inline_keyboard:
-        new_row = []
-        for btn in row:
-            # Если есть URL, создаем кнопку-ссылку, иначе callback
-            if "url" in btn:
-                new_row.append(InlineKeyboardButton(text=f'<tg-emoji emoji-id="{btn["icon_custom_emoji_id"]}">{btn["text"]}</tg-emoji>', url=btn["url"]))
-            else:
-                new_row.append(InlineKeyboardButton(text=f'<tg-emoji emoji-id="{btn["icon_custom_emoji_id"]}">{btn["text"]}</tg-emoji>', callback_data=btn["callback_data"]))
-        keyboard.append(new_row)
-    
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+    return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
 
 def profile_keyboard() -> InlineKeyboardMarkup:
     raw_inline_keyboard = [
@@ -384,7 +370,7 @@ async def back_to_main_handler(callback: CallbackQuery):
     await callback.message.edit_text(text=WELCOME_TEXT, parse_mode="HTML", reply_markup=main_keyboard())
     await callback.answer()
 
-@dp.callback_query(F.data.in_({"play", "chat", "rules", "help", "referral", "checks", "top_players", "transactions", "settings", "dep_stars", "dep_usdt", "dep_trx", "dep_ton"}))
+@dp.callback_query(F.data.in_({"play", "chat", "help", "referral", "checks", "top_players", "transactions", "settings", "dep_stars", "dep_usdt", "dep_trx", "dep_ton"}))
 async def silent_callback(callback: CallbackQuery):
     await callback.answer("Эта функция сейчас в разработке!", show_alert=False)
 
