@@ -1,0 +1,95 @@
+import asyncio
+import logging
+
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import CommandStart
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
+
+# Вставь сюда токен своего бота, полученный от @BotFather
+BOT_TOKEN = "8666251391:AAEKjitGiCOkRPpIesqUDK4jCXQUr7T-LO8"
+
+logging.basicConfig(level=logging.INFO)
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+
+# Текст приветствия. Кастомный эмодзи (premium-эмодзи) вставляется через
+# HTML-тег <tg-emoji emoji-id="...">, parse_mode должен быть "HTML".
+# У пользователей без Telegram Premium вместо кастомного эмодзи покажется
+# обычный emoji-фолбэк, указанный внутри тега (здесь — 🔥).
+WELCOME_TEXT = (
+    '<tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> '
+    "<b>Добро пожаловать в @wxs_gamebot</b>"
+)
+
+
+def main_keyboard() -> InlineKeyboardMarkup:
+    # Bot API 9.4+: icon_custom_emoji_id показывает кастомный premium-эмодзи
+    # перед текстом кнопки. Работает только если у владельца бота есть
+    # активная подписка Telegram Premium (или куплены доп. юзернеймы на Fragment).
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Играть",
+                    callback_data="play",
+                    icon_custom_emoji_id="5471895876790161593",
+                ),
+                InlineKeyboardButton(
+                    text="Чат",
+                    callback_data="chat",
+                    icon_custom_emoji_id="5235931189591710436",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Профиль",
+                    callback_data="profile",
+                    icon_custom_emoji_id="5197514090108456970",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Правила",
+                    callback_data="rules",
+                    icon_custom_emoji_id="5199867405769151212",
+                ),
+                InlineKeyboardButton(
+                    text="Помощь",
+                    callback_data="help",
+                    icon_custom_emoji_id="5199560697859577006",
+                ),
+            ],
+        ]
+    )
+
+
+
+@dp.message(CommandStart())
+async def start_handler(message: Message):
+    await message.answer(
+        WELCOME_TEXT,
+        parse_mode="HTML",
+        reply_markup=main_keyboard(),
+    )
+
+
+# Единый обработчик для всех кнопок: он ничего не делает,
+# просто "гасит" часики на кнопке и молчит.
+@dp.callback_query(F.data.in_({"play", "chat", "profile", "rules", "help"}))
+async def silent_callback(callback: CallbackQuery):
+    await callback.answer()  # без текста и без всплывающего окна
+
+
+async def main():
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
