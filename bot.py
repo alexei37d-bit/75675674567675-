@@ -52,11 +52,8 @@ class AdminStates(StatesGroup):
     waiting_for_broadcast = State()
     waiting_for_deduct_id = State()
     waiting_for_deduct_amount = State()
-    waiting_for_approve_deposit = State() # Добавлено для подтверждения пополнения
 
-WELCOME_TEXT = (
-    '<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>'
-)
+WELCOME_TEXT = ('<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>')
 
 def reply_main_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [[KeyboardButton(text="Баланс"), KeyboardButton(text="Играть"), KeyboardButton(text="Меню")]]
@@ -65,35 +62,13 @@ def reply_main_keyboard() -> ReplyKeyboardMarkup:
 def main_keyboard() -> InlineKeyboardMarkup:
     raw_inline_keyboard = [
         [
-            {
-                "text": "Играть",
-                "callback_data": "play",
-                "icon_custom_emoji_id": "5471895876790161593",
-            },
-            {
-                "text": "Чат",
-                "callback_data": "chat",
-                "icon_custom_emoji_id": "5235931189591710436",
-            },
+            {"text": "Играть", "callback_data": "play", "icon_custom_emoji_id": "5471895876790161593"},
+            {"text": "Чат", "callback_data": "chat", "icon_custom_emoji_id": "5235931189591710436"},
         ],
+        [{"text": "Профиль", "callback_data": "profile", "icon_custom_emoji_id": "5870994129244131212"}],
         [
-            {
-                "text": "Профиль",
-                "callback_data": "profile",
-                "icon_custom_emoji_id": "5870994129244131212",
-            }
-        ],
-        [
-           {
-                "text": "Правила",
-                "url": "https://telegra.ph/Pravila-WXS-game-07-13",
-                "icon_custom_emoji_id": "5296369303661067030", 
-            },
-            {
-                "text": "Помощь",
-                "callback_data": "help",
-                "icon_custom_emoji_id": "6028435952299413210",
-            },
+           {"text": "Правила", "url": "https://telegra.ph/Pravila-WXS-game-07-13", "icon_custom_emoji_id": "5296369303661067030"},
+           {"text": "Помощь", "callback_data": "help", "icon_custom_emoji_id": "6028435952299413210"},
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
@@ -133,16 +108,8 @@ def get_profile_message(user: dict) -> str:
 @dp.message(CommandStart())
 async def start_handler(message: Message):
     get_or_create_user(message.from_user.id, message.from_user.full_name)
-    await message.answer(
-        WELCOME_TEXT,
-        parse_mode="HTML",
-        reply_markup=reply_main_keyboard(),
-    )
-    await message.answer(
-        '<tg-emoji emoji-id="5463225256942539355">🏠</tg-emoji> Главное меню проекта:',
-        parse_mode="HTML",
-        reply_markup=main_keyboard()
-    )
+    await message.answer(WELCOME_TEXT, parse_mode="HTML", reply_markup=reply_main_keyboard())
+    await message.answer('<tg-emoji emoji-id="5463225256942539355">🏠</tg-emoji> Главное меню проекта:', parse_mode="HTML", reply_markup=main_keyboard())
 
 @dp.message(F.text == "Баланс")
 async def reply_balance_handler(message: Message):
@@ -164,18 +131,10 @@ async def profile_handler(callback: CallbackQuery):
     await callback.message.edit_text(text=get_profile_message(user), parse_mode="HTML", reply_markup=profile_keyboard())
     await callback.answer()
 
-@dp.callback_query(F.data == "dev_mode")
-async def dev_mode_handler(callback: CallbackQuery):
-    await callback.answer("Технические работы: функционал временно недоступен", show_alert=True)
-
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_handler(callback: CallbackQuery):
     await callback.message.edit_text(text=WELCOME_TEXT, parse_mode="HTML", reply_markup=main_keyboard())
     await callback.answer()
-
-@dp.callback_query(F.data.in_({"play", "chat", "help", "referral", "checks", "top_players", "transactions", "settings", "dep_stars", "dep_usdt", "dep_trx", "dep_ton"}))
-async def silent_callback(callback: CallbackQuery):
-    await callback.answer("Эта функция сейчас в разработке!", show_alert=False)
 
 @dp.callback_query(F.data == "deposit_select")
 async def select_deposit_method(callback: CallbackQuery):
@@ -218,46 +177,12 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="Оплатить счет", url=invoice_url)],
         [InlineKeyboardButton(text="Проверить оплату", callback_data=f"check_dep_{amount}")]
     ])
-    await message.answer(
-        f"Оплата на сумму <b>{amount} $</b>\nПерейдите по ссылке и после оплаты нажмите «Проверить оплату».\n\nАдминистратор проверит транзакцию и начислит средства.", 
-        parse_mode="HTML",
-        reply_markup=kb
-    )
+    await message.answer(f"Оплата на сумму <b>{amount} $</b>\nПерейдите по ссылке и после оплаты нажмите «Проверить оплату».", parse_mode="HTML", reply_markup=kb)
     await state.clear()
 
 @dp.callback_query(F.data.startswith("check_dep_"))
 async def check_deposit_status(callback: CallbackQuery):
-    amount = float(callback.data.split("_")[2])
-    await callback.message.answer(f"⏳ Запрос на проверку оплаты {amount} $ отправлен администратору. Ожидайте зачисления.")
-    
-    for admin_id in ADMIN_IDS:
-        try:
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✅ Зачислить", callback_data=f"admin_confirm_dep_{callback.from_user.id}_{amount}")],
-                [InlineKeyboardButton(text="❌ Отклонить", callback_data="admin_reject_dep")]
-            ])
-            await bot.send_message(admin_id, f"📥 Запрос на пополнение:\nПользователь: {callback.from_user.id}\nСумма: {amount} $", reply_markup=kb)
-        except: pass
-    await callback.answer("Запрос отправлен.")
-
-@dp.callback_query(F.data.startswith("admin_confirm_dep_"))
-async def admin_confirm_deposit(callback: CallbackQuery):
-    parts = callback.data.split("_")
-    user_id = int(parts[3])
-    amount = float(parts[4])
-    
-    user = get_or_create_user(user_id, "User")
-    user["balance"] += amount
-    user["deposits"] += amount
-    
-    await bot.send_message(user_id, f"✅ Ваш платеж на сумму {amount} $ успешно подтвержден администратором и зачислен на баланс.")
-    await callback.message.edit_text(f"✅ Пополнение на {amount} $ зачислено пользователю {user_id}.")
-    await callback.answer()
-
-@dp.callback_query(F.data == "admin_reject_dep")
-async def admin_reject_deposit(callback: CallbackQuery):
-    await callback.message.edit_text("❌ Запрос отклонен.")
-    await callback.answer()
+    await callback.answer("⏳ Ожидание подтверждения оплаты от платежной системы...", show_alert=True)
 
 @dp.callback_query(F.data == "withdraw_select")
 async def select_withdraw_method(callback: CallbackQuery):
@@ -299,14 +224,9 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
     
     user["balance"] -= amount
     req_id = random.randint(10000, 99999)
-    WITHDRAW_REQUESTS[req_id] = {
-        "user_id": message.from_user.id,
-        "amount": amount,
-        "method": method,
-        "status": "pending"
-    }
+    WITHDRAW_REQUESTS[req_id] = {"user_id": message.from_user.id, "amount": amount, "method": method, "status": "pending"}
     
-    await message.answer(f"✅ Заявка на вывод #{req_id} на сумму {amount} $ успешно создана и отправлена администраторам.")
+    await message.answer(f"✅ Заявка #{req_id} создана.")
     await state.clear()
     
     for admin_id in ADMIN_IDS:
@@ -315,21 +235,12 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
                 [InlineKeyboardButton(text="Одобрить", callback_data=f"admin_approve_req_{req_id}")],
                 [InlineKeyboardButton(text="Отклонить", callback_data=f"admin_reject_req_{req_id}")]
             ])
-            await bot.send_message(
-                admin_id, 
-                f"🚨 Новая заявка на вывод #{req_id}\n"
-                f"От: {message.from_user.id}\n"
-                f"Сумма: {amount} $\n"
-                f"Способ: {method}",
-                reply_markup=kb
-            )
-        except Exception:
-            pass
+            await bot.send_message(admin_id, f"🚨 Заявка #{req_id}\nОт: {message.from_user.id}\nСумма: {amount} $\nСпособ: {method}", reply_markup=kb)
+        except Exception: pass
 
 @dp.message(Command("admin"))
 async def admin_panel(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
-        return
+    if message.from_user.id not in ADMIN_IDS: return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Заявки на вывод", callback_data="admin_withdraw_requests")],
         [InlineKeyboardButton(text="Отнять баланс", callback_data="admin_deduct_bal")],
@@ -362,8 +273,7 @@ async def process_broadcast(message: Message, state: FSMContext):
             await bot.send_message(user_id, message.text, entities=message.entities)
             count += 1
             await asyncio.sleep(0.05)
-        except Exception:
-            pass
+        except Exception: pass
     await message.answer(f"✅ Рассылка завершена. Отправлено: {count} пользователям.")
     await state.clear()
 
@@ -385,50 +295,31 @@ async def process_deduct_id(message: Message, state: FSMContext):
 async def process_deduct_amount(message: Message, state: FSMContext):
     try:
         amount = float(message.text.replace(",", "."))
-    except ValueError:
-        return await message.answer("Неверная сумма.")
-    
+    except ValueError: return await message.answer("Неверная сумма.")
     data = await state.get_data()
     user_id = data.get("deduct_user_id")
     if user_id in USERS_DB:
         USERS_DB[user_id]["balance"] -= amount
-        await message.answer(f"✅ Списано {amount} $ у пользователя {user_id}. Новый баланс: {USERS_DB[user_id]['balance']} $")
-    else:
-        await message.answer("❌ Пользователь не найден.")
+        await message.answer(f"✅ Списано {amount} $ у {user_id}.")
+    else: await message.answer("❌ Пользователь не найден.")
     await state.clear()
 
 @dp.callback_query(F.data == "admin_withdraw_requests")
 async def admin_show_requests(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS: return
     pending_reqs = [req_id for req_id, req in WITHDRAW_REQUESTS.items() if req["status"] == "pending"]
-    if not pending_reqs:
-        return await callback.answer("Нет активных заявок на вывод.", show_alert=True)
-    
+    if not pending_reqs: return await callback.answer("Нет активных заявок.", show_alert=True)
     for req_id in pending_reqs:
         req = WITHDRAW_REQUESTS[req_id]
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Одобрить", callback_data=f"admin_approve_req_{req_id}")],
-            [InlineKeyboardButton(text="Отклонить", callback_data=f"admin_reject_req_{req_id}")]
-        ])
-        await callback.message.answer(
-            f"🚨 Заявка на вывод #{req_id}\n"
-            f"От ID: {req['user_id']}\n"
-            f"Сумма: {req['amount']} $\n"
-            f"Способ: {req['method']}",
-            reply_markup=kb
-        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Одобрить", callback_data=f"admin_approve_req_{req_id}")], [InlineKeyboardButton(text="Отклонить", callback_data=f"admin_reject_req_{req_id}")]])
+        await callback.message.answer(f"🚨 Заявка #{req_id}\nСумма: {req['amount']} $\nСпособ: {req['method']}", reply_markup=kb)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_approve_req_"))
 async def admin_approve_req_inline(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMIN_IDS: return
     req_id = int(callback.data.split("_")[-1])
-    
-    if req_id not in WITHDRAW_REQUESTS or WITHDRAW_REQUESTS[req_id]["status"] != "pending":
-        return await callback.answer("❌ Заявка не найдена или уже обработана.", show_alert=True)
-        
     await state.update_data(approve_req_id=req_id)
-    await callback.message.answer(f"Отправьте ссылку на чек (куда игрок должен получить средства) для заявки #{req_id}:")
+    await callback.message.answer(f"Отправьте ссылку на чек для заявки #{req_id}:")
     await state.set_state(AdminStates.waiting_for_approve_link)
     await callback.answer()
 
@@ -438,48 +329,22 @@ async def process_approve_link(message: Message, state: FSMContext):
     data = await state.get_data()
     req_id = data.get("approve_req_id")
     req = WITHDRAW_REQUESTS[req_id]
-    
     req["status"] = "approved"
-    user_id = req["user_id"]
-    if user_id in USERS_DB:
-        USERS_DB[user_id]["withdrawals"] += req["amount"]
-    
-    try:
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Активировать чек", url=check_url)]
-        ])
-        await bot.send_message(
-            user_id,
-            f'<tg-emoji emoji-id="5463225256942539355">🏠</tg-emoji> Ваш вывод одобрен на сумму {req["amount"]} $.',
-            parse_mode="HTML",
-            reply_markup=kb
-        )
-        await message.answer("✅ Чек успешно отправлен пользователю.")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка отправки пользователю: {e}")
+    USERS_DB[req["user_id"]]["withdrawals"] += req["amount"]
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Активировать чек", url=check_url)]])
+    await bot.send_message(req["user_id"], "✅ Ваш вывод одобрен.", reply_markup=kb)
+    await message.answer("✅ Чек отправлен.")
     await state.clear()
 
 @dp.callback_query(F.data.startswith("admin_reject_req_"))
 async def admin_reject_req_inline(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
     req_id = int(callback.data.split("_")[-1])
-    
-    if req_id not in WITHDRAW_REQUESTS or WITHDRAW_REQUESTS[req_id]["status"] != "pending":
-        return await callback.answer("❌ Заявка не найдена или уже обработана.", show_alert=True)
-    
     req = WITHDRAW_REQUESTS[req_id]
     req["status"] = "rejected"
-    user_id = req["user_id"]
-    if user_id in USERS_DB:
-        USERS_DB[user_id]["balance"] += req["amount"]
-        
-    try:
-        await bot.send_message(user_id, f"❌ Ваш вывод на сумму {req['amount']} $ был отклонен. Средства возвращены на баланс.")
-    except Exception:
-        pass
-        
-    await callback.message.edit_text(callback.message.text + "\n\n❌ ОТКЛОНЕНО")
-    await callback.answer("✅ Вывод отклонен, средства возвращены игроку.")
+    USERS_DB[req["user_id"]]["balance"] += req["amount"]
+    await bot.send_message(req["user_id"], f"❌ Вывод {req['amount']} $ отклонен.")
+    await callback.message.edit_text("❌ ОТКЛОНЕНО")
+    await callback.answer()
 
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
