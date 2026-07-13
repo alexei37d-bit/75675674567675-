@@ -10,7 +10,6 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 
-# Вставь сюда токен своего бота
 BOT_TOKEN = "8666251391:AAEKjitGiCOkRPpIesqUDK4jCXQUr7T-LO8"
 
 logging.basicConfig(level=logging.INFO)
@@ -18,20 +17,9 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ID премиум эмодзи (работают без Premium у бота)
-# Можно использовать любые ID, найденные в интернете
-CUSTOM_EMOJIS = {
-    "fire": "5472419592217332357",
-    "play": "5471895876790161593",
-    "chat": "5235931189591710436",
-    "profile": "5197514090108456970",
-    "rules": "5199867405769151212",
-    "help": "5199560697859577006",
-}
-
 WELCOME_TEXT = (
-    f'<tg-emoji emoji-id="{CUSTOM_EMOJIS["fire"]}">🔥</tg-emoji> '
-    "<b>Добро пожаловать в @wxs_gamebot</b>"
+    '<tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> '
+    '<b>Добро пожаловать в @wxs_gamebot</b>'
 )
 
 
@@ -40,33 +28,28 @@ def main_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Играть",
+                    text='<tg-emoji emoji-id="5471895876790161593">🎮</tg-emoji> Играть',
                     callback_data="play",
-                    icon_custom_emoji_id=CUSTOM_EMOJIS["play"],
                 ),
                 InlineKeyboardButton(
-                    text="Чат",
+                    text='<tg-emoji emoji-id="5235931189591710436">💬</tg-emoji> Чат',
                     callback_data="chat",
-                    icon_custom_emoji_id=CUSTOM_EMOJIS["chat"],
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="Профиль",
+                    text='<tg-emoji emoji-id="5197514090108456970">👤</tg-emoji> Профиль',
                     callback_data="profile",
-                    icon_custom_emoji_id=CUSTOM_EMOJIS["profile"],
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="Правила",
+                    text='<tg-emoji emoji-id="5199867405769151212">🛡</tg-emoji> Правила',
                     callback_data="rules",
-                    icon_custom_emoji_id=CUSTOM_EMOJIS["rules"],
                 ),
                 InlineKeyboardButton(
-                    text="Помощь",
+                    text='<tg-emoji emoji-id="5199560697859577006">⚙️</tg-emoji> Помощь',
                     callback_data="help",
-                    icon_custom_emoji_id=CUSTOM_EMOJIS["help"],
                 ),
             ],
         ]
