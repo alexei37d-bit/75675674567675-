@@ -368,4 +368,4 @@ async def main():
     await asyncio.gather(dp.start_polling(bot), start_web_server())
 
 if __name__ == "__main__":
-    asyncio.run(main())asyncio.run(main())
+    asyncio.run(main())
