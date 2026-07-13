@@ -85,10 +85,11 @@ def main_keyboard() -> InlineKeyboardMarkup:
             }
         ],
         [
-            {
-                "text": "🔒 Правила",
-                "url": "https://telegra.ph/Pravila-WXS-game-07-13",
-            },
+           {
+    "text": "Правила",
+    "url": "https://telegra.ph/Pravila-WXS-game-07-13",
+    "icon_custom_emoji_id": "5296369303661067030", 
+},
             {
                 "text": "Помощь",
                 "callback_data": "help",
