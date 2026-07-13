@@ -182,7 +182,20 @@ async def process_deposit_amount(message: Message, state: FSMContext):
 
 @dp.callback_query(F.data.startswith("check_dep_"))
 async def check_deposit_status(callback: CallbackQuery):
-    await callback.answer("⏳ Ожидание подтверждения оплаты от платежной системы...", show_alert=True)
+    # АВТО-ВЫДАЧА: Логика проверки статуса
+    amount = float(callback.data.split("_")[2])
+    
+    # Имитация проверки через API платежки
+    # В реальном проекте здесь будет запрос к API CryptoBot
+    payment_status = "paid" 
+    
+    if payment_status == "paid":
+        user = get_or_create_user(callback.from_user.id, callback.from_user.full_name)
+        user["balance"] += amount
+        user["deposits"] += amount
+        await callback.message.edit_text(f"✅ Успешно! Баланс пополнен на {amount} $")
+    else:
+        await callback.answer("❌ Оплата не найдена. Попробуйте позже.", show_alert=True)
 
 @dp.callback_query(F.data == "withdraw_select")
 async def select_withdraw_method(callback: CallbackQuery):
