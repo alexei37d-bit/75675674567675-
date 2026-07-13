@@ -1,81 +1,52 @@
 import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command  # <-- ВАЖНО: импортируем Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Токен бота
 BOT_TOKEN = "8956232681:AAHMiBNrTPiLg-a3ACr-dpZP-yIG9EPJAoE"
 
-# Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(bot)
 
-@dp.message(Command("start"))  # <-- ИСПРАВЛЕНО: используем Command("start")
+@dp.message_handler(commands=['start'])  # Для aiogram 2.x используется message_handler
 async def start(message: types.Message):
-    # Создаём клавиатуру с кнопками
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="Премиум 🎁",
-                callback_data="premium"
-            ),
-            InlineKeyboardButton(
-                text="Профиль 👤",
-                callback_data="profile"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="Магазин ⭐",
-                callback_data="shop"
-            ),
-            InlineKeyboardButton(
-                text="Задания 🎯",
-                callback_data="tasks"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="Удалить ❌",
-                callback_data="delete"
-            ),
-        ],
-    ])
-
-    await message.answer(
-        "👋 Добро пожаловать!\nВыберите действие:",
-        reply_markup=keyboard
-    )
-
-@dp.callback_query()
-async def handle_callback(callback: types.CallbackQuery):
-    # Обработка нажатий на кнопки
-    if callback.data == "premium":
-        await callback.message.answer("🎁 Вы выбрали Премиум!\nДоступны эксклюзивные функции.")
-    elif callback.data == "profile":
-        await callback.message.answer("👤 Ваш профиль:\nИмя: Пользователь\nСтатус: Обычный")
-    elif callback.data == "shop":
-        await callback.message.answer("🛍️ Магазин:\n1. Премиум - 100⭐\n2. Бонусы - 50⭐")
-    elif callback.data == "tasks":
-        await callback.message.answer("🎯 Задания:\n- Пригласи друга\n- Выполни 5 действий")
-    elif callback.data == "delete":
-        await callback.message.answer("🗑️ Сообщение удалено!")
-        await callback.message.delete()
+    # Создаём клавиатуру с кнопками (эмодзи поддерживаются)
+    keyboard = InlineKeyboardMarkup(row_width=2)  # row_width - сколько кнопок в ряду
     
-    # Подтверждаем получение callback
-    await callback.answer()
-
-@dp.message()
-async def echo(message: types.Message):
-    # Ответ на любые другие сообщения
-    await message.answer(
-        "Используйте команду /start для начала работы с ботом"
+    # Добавляем кнопки
+    keyboard.add(
+        InlineKeyboardButton("🎁 Премиум", callback_data="premium"),
+        InlineKeyboardButton("👤 Профиль", callback_data="profile")
+    )
+    keyboard.add(
+        InlineKeyboardButton("⭐ Магазин", callback_data="shop"),
+        InlineKeyboardButton("🎯 Задания", callback_data="tasks")
+    )
+    keyboard.add(
+        InlineKeyboardButton("❌ Удалить", callback_data="delete")
     )
 
-async def main():
-    # Запуск бота
-    print("🚀 Бот запущен!")
-    await dp.start_polling(bot)
+    await message.answer("👋 Добро пожаловать!\nВыберите действие:", reply_markup=keyboard)
+
+@dp.callback_query_handler(lambda c: True)  # Для aiogram 2.x
+async def handle_callback(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)  # Подтверждаем получение
+    
+    if callback_query.data == "premium":
+        await bot.send_message(callback_query.from_user.id, "🎁 Вы выбрали Премиум!\nДоступны эксклюзивные функции.")
+    elif callback_query.data == "profile":
+        await bot.send_message(callback_query.from_user.id, "👤 Ваш профиль:\nИмя: Пользователь\nСтатус: Обычный")
+    elif callback_query.data == "shop":
+        await bot.send_message(callback_query.from_user.id, "🛍️ Магазин:\n1. Премиум - 100⭐\n2. Бонусы - 50⭐")
+    elif callback_query.data == "tasks":
+        await bot.send_message(callback_query.from_user.id, "🎯 Задания:\n- Пригласи друга\n- Выполни 5 действий")
+    elif callback_query.data == "delete":
+        await bot.send_message(callback_query.from_user.id, "🗑️ Сообщение удалено!")
+        await bot.delete_message(callback_query.from_user.id, callback_query.message.message_id)
+
+@dp.message_handler()
+async def echo(message: types.Message):
+    await message.answer("Используйте команду /start для начала работы с ботом")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    from aiogram import executor
+    executor.start_polling(dp, skip_updates=True)
