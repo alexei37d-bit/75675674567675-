@@ -5,7 +5,6 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
 
-# Твой тестовый токен
 BOT_TOKEN = "8364120048:AAFE8DkMaaTt8_MgYoJQkHVsiG41Cg_AZIo"
 
 logging.basicConfig(level=logging.INFO)
@@ -18,10 +17,7 @@ WELCOME_TEXT = (
     "<b>Добро пожаловать в @wxs_gamebot</b>"
 )
 
-
 def main_keyboard() -> InlineKeyboardMarkup:
-    # Собираем сырую структуру кнопок вручную через обычные словари (dict).
-    # Это полностью отключает валидацию Pydantic и решает проблему!
     raw_inline_keyboard = [
         [
             {
@@ -56,9 +52,7 @@ def main_keyboard() -> InlineKeyboardMarkup:
         ],
     ]
 
-    # Передаем сырую разметку напрямую в объект клавиатуры
     return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
-
 
 @dp.message(CommandStart())
 async def start_handler(message: Message):
