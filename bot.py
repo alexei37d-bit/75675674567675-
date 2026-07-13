@@ -3,12 +3,7 @@ import logging
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
-from aiogram.types import (
-    Message,
-    CallbackQuery,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-)
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
 
 # Твой тестовый токен
 BOT_TOKEN = "8364120048:AAFE8DkMaaTt8_MgYoJQkHVsiG41Cg_AZIo"
@@ -25,59 +20,48 @@ WELCOME_TEXT = (
 
 
 def main_keyboard() -> InlineKeyboardMarkup:
-    # 1. Возвращаем кавычки (делаем str), чтобы Pydantic пропустил валидацию без ошибок
-    markup = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Играть",
-                    callback_data="play",
-                    icon_custom_emoji_id="5471895876790161593",
-                ),
-                InlineKeyboardButton(
-                    text="Чат",
-                    callback_data="chat",
-                    icon_custom_emoji_id="5235931189591710436",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Профиль",
-                    callback_data="profile",
-                    icon_custom_emoji_id="5870994129244131212",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Правила",
-                    callback_data="rules",
-                    icon_custom_emoji_id="5199867405769151212",
-                ),
-                InlineKeyboardButton(
-                    text="Помощь",
-                    callback_data="help",
-                    icon_custom_emoji_id="6028435952299413210",
-                ),
-            ],
-        ]
-    )
+    # Собираем сырую структуру кнопок вручную через обычные словари (dict).
+    # Это полностью отключает валидацию Pydantic и решает проблему!
+    raw_inline_keyboard = [
+        [
+            {
+                "text": "Играть",
+                "callback_data": "play",
+                "icon_custom_emoji_id": "5471895876790161593",
+            },
+            {
+                "text": "Чат",
+                "callback_data": "chat",
+                "icon_custom_emoji_id": "5235931189591710436",
+            },
+        ],
+        [
+            {
+                "text": "Профиль",
+                "callback_data": "profile",
+                "icon_custom_emoji_id": "5870994129244131212",
+            }
+        ],
+        [
+            {
+                "text": "Правила",
+                "callback_data": "rules",
+                "icon_custom_emoji_id": "5199867405769151212",
+            },
+            {
+                "text": "Помощь",
+                "callback_data": "help",
+                "icon_custom_emoji_id": "6028435952299413210",
+            },
+        ],
+    ]
 
-    # 2. ХАК ДЛЯ TELEGRAM: Принудительно превращаем строки в числа во внутреннем JSON-объекте кнопки
-    # Это обойдет баг парсинга на серверах Telegram!
-    for row in markup.inline_keyboard:
-        for button in row:
-            if button.icon_custom_emoji_id:
-                # Превращаем "12345" в 12345 прямо в словаре перед отправкой
-                button.custom_fields["icon_custom_emoji_id"] = int(
-                    button.icon_custom_emoji_id
-                )
-
-    return markup
+    # Передаем сырую разметку напрямую в объект клавиатуры
+    return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
 
 
 @dp.message(CommandStart())
 async def start_handler(message: Message):
-    # Теперь и Pydantic доволен, и Telegram получит чистые числа
     await message.answer(
         WELCOME_TEXT,
         parse_mode="HTML",
