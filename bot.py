@@ -52,6 +52,7 @@ class AdminStates(StatesGroup):
     waiting_for_broadcast = State()
     waiting_for_deduct_id = State()
     waiting_for_deduct_amount = State()
+    waiting_for_approve_deposit = State() # Добавлено для подтверждения пополнения
 
 WELCOME_TEXT = (
     '<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>'
@@ -218,7 +219,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="Проверить оплату", callback_data=f"check_dep_{amount}")]
     ])
     await message.answer(
-        f"Оплата на сумму <b>{amount} $</b>\nПерейдите по ссылке и после оплаты нажмите «Проверить оплату».", 
+        f"Оплата на сумму <b>{amount} $</b>\nПерейдите по ссылке и после оплаты нажмите «Проверить оплату».\n\nАдминистратор проверит транзакцию и начислит средства.", 
         parse_mode="HTML",
         reply_markup=kb
     )
@@ -227,10 +228,35 @@ async def process_deposit_amount(message: Message, state: FSMContext):
 @dp.callback_query(F.data.startswith("check_dep_"))
 async def check_deposit_status(callback: CallbackQuery):
     amount = float(callback.data.split("_")[2])
-    user = get_or_create_user(callback.from_user.id, callback.from_user.full_name)
+    await callback.message.answer(f"⏳ Запрос на проверку оплаты {amount} $ отправлен администратору. Ожидайте зачисления.")
+    
+    for admin_id in ADMIN_IDS:
+        try:
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Зачислить", callback_data=f"admin_confirm_dep_{callback.from_user.id}_{amount}")],
+                [InlineKeyboardButton(text="❌ Отклонить", callback_data="admin_reject_dep")]
+            ])
+            await bot.send_message(admin_id, f"📥 Запрос на пополнение:\nПользователь: {callback.from_user.id}\nСумма: {amount} $", reply_markup=kb)
+        except: pass
+    await callback.answer("Запрос отправлен.")
+
+@dp.callback_query(F.data.startswith("admin_confirm_dep_"))
+async def admin_confirm_deposit(callback: CallbackQuery):
+    parts = callback.data.split("_")
+    user_id = int(parts[3])
+    amount = float(parts[4])
+    
+    user = get_or_create_user(user_id, "User")
     user["balance"] += amount
     user["deposits"] += amount
-    await callback.message.edit_text(f"✅ Пополнение на {amount} $ успешно зачислено!")
+    
+    await bot.send_message(user_id, f"✅ Ваш платеж на сумму {amount} $ успешно подтвержден администратором и зачислен на баланс.")
+    await callback.message.edit_text(f"✅ Пополнение на {amount} $ зачислено пользователю {user_id}.")
+    await callback.answer()
+
+@dp.callback_query(F.data == "admin_reject_dep")
+async def admin_reject_deposit(callback: CallbackQuery):
+    await callback.message.edit_text("❌ Запрос отклонен.")
     await callback.answer()
 
 @dp.callback_query(F.data == "withdraw_select")
@@ -292,7 +318,7 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
             await bot.send_message(
                 admin_id, 
                 f"🚨 Новая заявка на вывод #{req_id}\n"
-                f"От: {message.from_user.id} (@{message.from_user.username})\n"
+                f"От: {message.from_user.id}\n"
                 f"Сумма: {amount} $\n"
                 f"Способ: {method}",
                 reply_markup=kb
