@@ -10,12 +10,11 @@ from aiogram.types import (
     InlineKeyboardButton,
 )
 
-# ⚠️ Не забудь вставить свой актуальный токен бота сюда
+# ⚠️ Вставь сюда свой токен бота из @BotFather
 BOT_TOKEN = "8364120048:AAFE8DkMaaTt8_MgYoJQkHVsiG41Cg_AZIo"
 
 logging.basicConfig(level=logging.INFO)
 
-# В aiogram 3.x они создаются именно так отдельными объектами:
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
@@ -27,43 +26,45 @@ WELCOME_TEXT = (
 
 
 def main_keyboard() -> InlineKeyboardMarkup:
+    # ИСПРАВЛЕНО: Убрали кавычки у всех icon_custom_emoji_id, теперь это числа (int)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="Играть",
                     callback_data="play",
-                    icon_custom_emoji_id="5373111899170831131",  # Синий игровой джойстик (системный)
+                    icon_custom_emoji_id=5471895876790161593,
                 ),
                 InlineKeyboardButton(
                     text="Чат",
                     callback_data="chat",
-                    icon_custom_emoji_id="5373031024349444013",  # Облачко диалога
+                    icon_custom_emoji_id=5235931189591710436,
                 ),
             ],
             [
                 InlineKeyboardButton(
                     text="Профиль",
                     callback_data="profile",
-                    icon_custom_emoji_id=" 5769126056262898415",  # Иконка юзера
+                    icon_custom_emoji_id=5870994129244131212,
                 ),
             ],
             [
                 InlineKeyboardButton(
                     text="Правила",
                     callback_data="rules",
-                    icon_custom_emoji_id="5372911228249211140",  # Книга / Свиток
+                    icon_custom_emoji_id=5199867405769151212,
                 ),
                 InlineKeyboardButton(
                     text="Помощь",
                     callback_data="help",
-                    icon_custom_emoji_id="6028435952299413210",  # Знак вопроса
+                    icon_custom_emoji_id=6028435952299413210,
                 ),
             ],
         ]
     )
 
-# Синтаксис aiogram 3.x для команды /start
+
+# Обработчик команды /start
 @dp.message(CommandStart())
 async def start_handler(message: Message):
     await message.answer(
@@ -73,7 +74,7 @@ async def start_handler(message: Message):
     )
 
 
-# Обработчик кнопок через магический фильтр F
+# Единый обработчик для всех кнопок
 @dp.callback_query(F.data.in_({"play", "chat", "profile", "rules", "help"}))
 async def silent_callback(callback: CallbackQuery):
     await callback.answer()
