@@ -17,8 +17,18 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# ID премиум эмодзи
+EMOJI_IDS = {
+    "fire": "5472419592217332357",
+    "play": "5471895876790161593",
+    "chat": "5235931189591710436",
+    "profile": "5197514090108456970",
+    "rules": "5199867405769151212",
+    "help": "5199560697859577006",
+}
+
 WELCOME_TEXT = (
-    '<tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> '
+    f'<tg-emoji emoji-id="{EMOJI_IDS["fire"]}">🔥</tg-emoji> '
     '<b>Добро пожаловать в @wxs_gamebot</b>'
 )
 
@@ -28,28 +38,33 @@ def main_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text='<tg-emoji emoji-id="5471895876790161593">🎮</tg-emoji> Играть',
+                    text="Играть",
                     callback_data="play",
+                    icon_custom_emoji_id=EMOJI_IDS["play"],
                 ),
                 InlineKeyboardButton(
-                    text='<tg-emoji emoji-id="5235931189591710436">💬</tg-emoji> Чат',
+                    text="Чат",
                     callback_data="chat",
+                    icon_custom_emoji_id=EMOJI_IDS["chat"],
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text='<tg-emoji emoji-id="5197514090108456970">👤</tg-emoji> Профиль',
+                    text="Профиль",
                     callback_data="profile",
+                    icon_custom_emoji_id=EMOJI_IDS["profile"],
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text='<tg-emoji emoji-id="5199867405769151212">🛡</tg-emoji> Правила',
+                    text="Правила",
                     callback_data="rules",
+                    icon_custom_emoji_id=EMOJI_IDS["rules"],
                 ),
                 InlineKeyboardButton(
-                    text='<tg-emoji emoji-id="5199560697859577006">⚙️</tg-emoji> Помощь',
+                    text="Помощь",
                     callback_data="help",
+                    icon_custom_emoji_id=EMOJI_IDS["help"],
                 ),
             ],
         ]
