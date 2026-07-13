@@ -1,68 +1,95 @@
 import asyncio
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import CommandStart
+import logging
 
-bot = Bot(token="8364120048:AAFE8DkMaaTt8_MgYoJQkHVsiG41Cg_AZIo")
+from aiogram import Bot, Dispatcher, F
+from aiogram.filters import CommandStart
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
+
+# ⚠️ ВАЖНО: Замените эту строку на ваш НОВЫЙ токен из @BotFather!
+# Старый токен из вашего сообщения использовать нельзя, он скомпрометирован.
+BOT_TOKEN = "8364120048:AAFE8DkMaaTt8_MgYoJQkHVsiG41Cg_AZIo"
+
+logging.basicConfig(level=logging.INFO)
+
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# Приветственный текст с премиум-эмодзи.
+# Чтобы он отображался, у пользователя ДОЛЖЕН быть Telegram Premium,
+# а parse_mode ОБЯЗАТЕЛЬНО должен быть равен "HTML".
+WELCOME_TEXT = (
+    '<tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> '
+    "<b>Добро пожаловать в @wxs_gamebot</b>"
+)
+
+
+def main_keyboard() -> InlineKeyboardMarkup:
+    # Кнопки с параметром icon_custom_emoji_id.
+    # Работают только если у самого бота куплен коллекционный юзернейм на Fragment
+    # или подключены соответствующие премиум-функции для ботов.
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Играть",
+                    callback_data="play",
+                    icon_custom_emoji_id="5471895876790161593",
+                ),
+                InlineKeyboardButton(
+                    text="Чат",
+                    callback_data="chat",
+                    icon_custom_emoji_id="5235931189591710436",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Профиль",
+                    callback_data="profile",
+                    icon_custom_emoji_id="5197514090108456970",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Правила",
+                    callback_data="rules",
+                    icon_custom_emoji_id="5199867405769151212",
+                ),
+                InlineKeyboardButton(
+                    text="Помощь",
+                    callback_data="help",
+                    icon_custom_emoji_id="5199560697859577006",
+                ),
+            ],
+        ]
+    )
+
+
 @dp.message(CommandStart())
-async def start(message: types.Message):
-    # Создаём клавиатуру
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="Премиум 🎁",  # Текст кнопки
-                callback_data="premium",  # Данные при нажатии
-                style="primary",  # Синий цвет
-                icon_custom_emoji_id="5471952986970267163"  # ID эмодзи: 💎
-            ),
-            InlineKeyboardButton(
-                text="Профиль",  # Текст кнопки
-                callback_data="profile",  # Данные при нажатии
-                style="success",  # Зелёный цвет
-                icon_custom_emoji_id="5368324170671202286"  # ID эмодзи: 👤
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="Магазин ⭐",  # Текст кнопки
-                callback_data="shop",  # Данные при нажатии
-                icon_custom_emoji_id="547644880824181073"  # ID эмодзи: ⭐
-            ),
-            InlineKeyboardButton(
-                text="Задания 🎯",  # Текст кнопки
-                callback_data="tasks",  # Данные при нажатии
-                icon_custom_emoji_id="547528498097861387"  # ID эмодзи: 🎯
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="Удалить ❌",  # Текст кнопки
-                callback_data="delete",  # Данные при нажатии
-                style="danger",  # Красный цвет
-                icon_custom_emoji_id="5310169226856644648"  # ID эмодзи: 🗑
-            ),
-        ],
-    ])
+async def start_handler(message: Message):
+    # Отправляем сообщение. parse_mode="HTML" критически важен для <tg-emoji>
+    await message.answer(
+        WELCOME_TEXT,
+        parse_mode="HTML",
+        reply_markup=main_keyboard(),
+    )
 
-    # Отправляем сообщение с кнопками (УБРАЛ parse_mode)
-    await message.answer("Выберите действие:", reply_markup=keyboard)
 
-@dp.callback_query()
-async def handle_callback(callback: types.CallbackQuery):
-    await callback.answer()  # ДОБАВЛЕНО
-    
-    # Обработка нажатий
-    if callback.data == "premium":
-        await callback.message.answer("Вы нажали на Премиум кнопку!")
-    elif callback.data == "profile":
-        await callback.message.answer("Вы открыли профиль!")
-    elif callback.data == "shop":
-        await callback.message.answer("Вы выбрали магазин!")
-    elif callback.data == "delete":
-        await callback.message.answer("Вы удалили!")
+# Обработчик нажатий на inline-кнопки
+@dp.callback_query(F.data.in_({"play", "chat", "profile", "rules", "help"}))
+async def silent_callback(callback: CallbackQuery):
+    await callback.answer()
 
-# Запуск бота
+
+async def main():
+    # Удаляем вебхуки и запускаем лонг-поллинг
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+
 if __name__ == "__main__":
-    asyncio.run(dp.start_polling(bot))
+    asyncio.run(main())
