@@ -1,52 +1,69 @@
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.enums import ParseMode
+from aiogram.filters import CommandStart  # ДОБАВЛЕНО
 
-BOT_TOKEN = "8364120048:AAFE8DkMaaTt8_MgYoJQkHVsiG41Cg_AZIo"
+bot = Bot(token="8364120048:AAFE8DkMaaTt8_MgYoJQkHVsiG41Cg_AZIo")
+dp = Dispatcher()
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(bot)
-
-@dp.message_handler(commands=['start'])  # Для aiogram 2.x используется message_handler
+@dp.message(CommandStart())
 async def start(message: types.Message):
-    # Создаём клавиатуру с кнопками (эмодзи поддерживаются)
-    keyboard = InlineKeyboardMarkup(row_width=2)  # row_width - сколько кнопок в ряду
+    # Создаём клавиатуру
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Премиум 🎁",  # Текст кнопки
+                callback_data="premium",  # Данные при нажатии
+                style="primary",  # Синий цвет
+                icon_custom_emoji_id="5471952986970267163"  # ID эмодзи: 💎
+            ),
+            InlineKeyboardButton(
+                text="Профиль",  # Текст кнопки
+                callback_data="profile",  # Данные при нажатии
+                style="success",  # Зелёный цвет
+                icon_custom_emoji_id="5368324170671202286"  # ID эмодзи: 👤
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="Магазин ⭐",  # Текст кнопки
+                callback_data="shop",  # Данные при нажатии
+                icon_custom_emoji_id="547644880824181073"  # ID эмодзи: ⭐
+            ),
+            InlineKeyboardButton(
+                text="Задания 🎯",  # Текст кнопки
+                callback_data="tasks",  # Данные при нажатии
+                icon_custom_emoji_id="547528498097861387"  # ID эмодзи: 🎯
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="Удалить ❌",  # Текст кнопки
+                callback_data="delete",  # Данные при нажатии
+                style="danger",  # Красный цвет
+                icon_custom_emoji_id="5310169226856644648"  # ID эмодзи: 🗑
+            ),
+        ],
+    ])
+
+    # Отправляем сообщение с кнопками
+    await message.answer("Выберите действие:", reply_markup=keyboard, parse_mode=ParseMode.HTML)
+
+@dp.callback_query()
+async def handle_callback(callback: types.CallbackQuery):
+    await callback.answer()  # ДОБАВЛЕНО
     
-    # Добавляем кнопки
-    keyboard.add(
-        InlineKeyboardButton("🎁 Премиум", callback_data="premium"),
-        InlineKeyboardButton("👤 Профиль", callback_data="profile")
-    )
-    keyboard.add(
-        InlineKeyboardButton("⭐ Магазин", callback_data="shop"),
-        InlineKeyboardButton("🎯 Задания", callback_data="tasks")
-    )
-    keyboard.add(
-        InlineKeyboardButton("❌ Удалить", callback_data="delete")
-    )
+    # Обработка нажатий
+    if callback.data == "premium":
+        await callback.message.answer("Вы нажали на Премиум кнопку!")
+    elif callback.data == "profile":
+        await callback.message.answer("Вы открыли профиль!")
+    elif callback.data == "shop":
+        await callback.message.answer("Вы выбрали магазин!")
+    elif callback.data == "delete":
+        await callback.message.answer("Вы удалили!")
 
-    await message.answer("👋 Добро пожаловать!\nВыберите действие:", reply_markup=keyboard)
-
-@dp.callback_query_handler(lambda c: True)  # Для aiogram 2.x
-async def handle_callback(callback_query: types.CallbackQuery):
-    await bot.answer_callback_query(callback_query.id)  # Подтверждаем получение
-    
-    if callback_query.data == "premium":
-        await bot.send_message(callback_query.from_user.id, "🎁 Вы выбрали Премиум!\nДоступны эксклюзивные функции.")
-    elif callback_query.data == "profile":
-        await bot.send_message(callback_query.from_user.id, "👤 Ваш профиль:\nИмя: Пользователь\nСтатус: Обычный")
-    elif callback_query.data == "shop":
-        await bot.send_message(callback_query.from_user.id, "🛍️ Магазин:\n1. Премиум - 100⭐\n2. Бонусы - 50⭐")
-    elif callback_query.data == "tasks":
-        await bot.send_message(callback_query.from_user.id, "🎯 Задания:\n- Пригласи друга\n- Выполни 5 действий")
-    elif callback_query.data == "delete":
-        await bot.send_message(callback_query.from_user.id, "🗑️ Сообщение удалено!")
-        await bot.delete_message(callback_query.from_user.id, callback_query.message.message_id)
-
-@dp.message_handler()
-async def echo(message: types.Message):
-    await message.answer("Используйте команду /start для начала работы с ботом")
-
+# Запуск бота
 if __name__ == "__main__":
-    from aiogram import executor
-    executor.start_polling(dp, skip_updates=True)
+    asyncio.run(dp.start_polling(bot))  # ИСПРАВЛЕНО
