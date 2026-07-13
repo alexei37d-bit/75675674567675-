@@ -27,43 +27,41 @@ WELCOME_TEXT = (
 
 
 def main_keyboard() -> InlineKeyboardMarkup:
-    # Теперь icon_custom_emoji_id поддерживается официально и без костылей!
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="Играть",
                     callback_data="play",
-                    icon_custom_emoji_id="5471895876790161593",
+                    icon_custom_emoji_id="5373111899170831131",  # Синий игровой джойстик (системный)
                 ),
                 InlineKeyboardButton(
                     text="Чат",
                     callback_data="chat",
-                    icon_custom_emoji_id="5235931189591710436",
+                    icon_custom_emoji_id="5373031024349444013",  # Облачко диалога
                 ),
             ],
             [
                 InlineKeyboardButton(
                     text="Профиль",
                     callback_data="profile",
-                    icon_custom_emoji_id="5197514090108456970",
+                    icon_custom_emoji_id="5368324151742332134",  # Иконка юзера
                 ),
             ],
             [
                 InlineKeyboardButton(
                     text="Правила",
                     callback_data="rules",
-                    icon_custom_emoji_id="5199867405769151212",
+                    icon_custom_emoji_id="5372911228249211140",  # Книга / Свиток
                 ),
                 InlineKeyboardButton(
                     text="Помощь",
                     callback_data="help",
-                    icon_custom_emoji_id="5199560697859577006",
+                    icon_custom_emoji_id="5373177693724504141",  # Знак вопроса
                 ),
             ],
         ]
     )
-
 
 # Синтаксис aiogram 3.x для команды /start
 @dp.message(CommandStart())
