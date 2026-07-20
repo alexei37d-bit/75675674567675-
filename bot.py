@@ -63,12 +63,10 @@ class AdminStates(StatesGroup):
 WELCOME_TEXT = ('<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>')
 
 DEPOSIT_METHODS_TEXT = (
-   
     'Выберите способ пополнения:'
 )
 
 WITHDRAW_METHODS_TEXT = (
-   
     'Выберите способ вывода:'
 )
 
@@ -214,8 +212,14 @@ async def process_deposit_amount(message: Message, state: FSMContext):
                     "Content-Type": "application/json",
                     "User-Agent": DEFAULT_USER_AGENT
                 }
-                payload = {"amount": amount, "currency": "USDT", "description": "Deposit"}
-                async with session.post("https://pay.xrocket.exchange/api/v1/tg-invoice/create", headers=headers, json=payload) as resp:
+                payload = {
+                    "amount": amount, 
+                    "minPayment": 0,
+                    "numPayments": 1,
+                    "currency": "USDT", 
+                    "description": "Deposit"
+                }
+                async with session.post("https://pay.xrocket.exchange/api/v1/invoice", headers=headers, json=payload) as resp:
                     if resp.status == 200:
                         resp_data = await resp.json()
                         if resp_data.get("success"):
@@ -268,7 +272,7 @@ async def check_payment_handler(callback: CallbackQuery):
                     "Api-Key": XROCKET_TOKEN,
                     "User-Agent": DEFAULT_USER_AGENT
                 }
-                async with session.get(f"https://pay.xrocket.exchange/api/v1/tg-invoice/{invoice_id}", headers=headers) as resp:
+                async with session.get(f"https://pay.xrocket.exchange/api/v1/invoice/{invoice_id}", headers=headers) as resp:
                     if resp.status == 200:
                         resp_data = await resp.json()
                         if resp_data.get("success"):
