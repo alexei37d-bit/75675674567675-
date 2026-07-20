@@ -152,7 +152,11 @@ async def reply_play_handler(message: Message):
 
 @dp.callback_query(F.data == "help")
 async def help_handler(callback: CallbackQuery):
-    help_text = "Если нужна помощь то обращайтесь к тех поддержке"
+    help_text = "Важно!
+
+— Вопросы по выводу/пополнению — в Техподдержку.
+— Технические сбои и ошибки — в Техподдержку.
+— Предложения и пожелания по работе казино — тоже в Техподдержку."
     await callback.message.edit_text(text=help_text, reply_markup=help_keyboard(), parse_mode="HTML")
     await callback.answer()
 
