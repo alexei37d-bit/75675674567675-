@@ -109,6 +109,17 @@ def profile_keyboard() -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
 
+def help_keyboard() -> InlineKeyboardMarkup:
+    raw_inline_keyboard = [
+        [
+            {"text": "Тех. поддержка", "url": "https://t.me/jei1a"}
+        ],
+        [
+            {"text": "< Назад", "callback_data": "back_to_main"}
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
+
 def get_profile_message(user: dict) -> str:
     return (
         f"<tg-emoji emoji-id=\"5275979556308674886\">👤</tg-emoji> <b>Имя:</b> {user['name']}\n"
@@ -138,6 +149,12 @@ async def reply_menu_handler(message: Message):
 @dp.message(F.text == "Играть")
 async def reply_play_handler(message: Message):
     await message.answer("🎰 Раздел с играми находится в разработке!")
+
+@dp.callback_query(F.data == "help")
+async def help_handler(callback: CallbackQuery):
+    help_text = "Если нужна помощь то обращайтесь к тех поддержке"
+    await callback.message.edit_text(text=help_text, reply_markup=help_keyboard(), parse_mode="HTML")
+    await callback.answer()
 
 @dp.callback_query(F.data == "profile")
 async def profile_handler(callback: CallbackQuery):
