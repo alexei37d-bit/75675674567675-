@@ -21,7 +21,6 @@ from aiogram.types import (
 
 BOT_TOKEN = "8804355629:AAH6auh84fLdBhSfQkI_dKBnY9QTa-XXm_k"
 CRYPTO_BOT_TOKEN = "611566:AAtSWGwJ3QTFtDPqTVNmvHxi6niSqwCn3eP"
-XROCKET_TOKEN = "07819b38790d8bf3c2058006e"
 
 ADMIN_IDS = [6130985988, 7921743592]
 
@@ -83,7 +82,7 @@ def main_keyboard() -> InlineKeyboardMarkup:
         [{"text": "Профиль", "callback_data": "profile", "icon_custom_emoji_id": "5870994129244131212"}],
         [
            {"text": "Правила", "url": "https://telegra.ph/Pravila-WXS-game-07-13", "icon_custom_emoji_id": "5296369303661067030"},
-           {"text": "Помощь", "callback_data": "help", "icon_custom_emoji_id": "6028435952299413210"},
+           {"text": "Помощь", "callback_data": "help", "icon_custom_emoji_id": "5197269100878907942"},
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
@@ -155,7 +154,6 @@ async def back_to_main_handler(callback: CallbackQuery):
 async def select_deposit_method(callback: CallbackQuery):
     raw_inline_keyboard = [
         [{"text": "CryptoBot", "callback_data": "dep_method_crypto", "icon_custom_emoji_id": "5361914370068613491"}],
-        [{"text": "Xrocket", "callback_data": "dep_method_xrocket", "icon_custom_emoji_id": "5415897719522744378"}],
         [{"text": "< Назад", "callback_data": "back_to_main"}]
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
@@ -206,32 +204,6 @@ async def process_deposit_amount(message: Message, state: FSMContext):
                     else:
                         return await message.answer(f"HTTP Ошибка CryptoBot: {resp.status}")
 
-            else:
-                headers = {
-                    "Api-Key": XROCKET_TOKEN, 
-                    "Content-Type": "application/json",
-                    "User-Agent": DEFAULT_USER_AGENT
-                }
-                payload = {
-                    "amount": amount, 
-                    "minPayment": 0,
-                    "numPayments": 1,
-                    "currency": "USDT", 
-                    "description": "Deposit"
-                }
-                async with session.post("https://pay.xrocket.exchange/api/v1/invoice", headers=headers, json=payload) as resp:
-                    if resp.status == 200:
-                        resp_data = await resp.json()
-                        if resp_data.get("success"):
-                            invoice_id = str(resp_data["data"]["id"])
-                            invoice_url = resp_data["data"]["link"]
-                        else:
-                            error_msg = resp_data.get("message", "Неизвестная ошибка")
-                            return await message.answer(f"Ошибка API XRocket: {error_msg}")
-                    else:
-                        error_text = await resp.text()
-                        return await message.answer(f"HTTP Ошибка XRocket: {resp.status}\nОтвет: {error_text}")
-
     except Exception as e:
         return await message.answer(f"Ошибка соединения с платежной системой:\n{str(e)}")
 
@@ -267,17 +239,6 @@ async def check_payment_handler(callback: CallbackQuery):
                         if resp_data.get("ok") and resp_data["result"]["items"]:
                             if resp_data["result"]["items"][0]["status"] == "paid":
                                 is_paid = True
-            else:
-                headers = {
-                    "Api-Key": XROCKET_TOKEN,
-                    "User-Agent": DEFAULT_USER_AGENT
-                }
-                async with session.get(f"https://pay.xrocket.exchange/api/v1/invoice/{invoice_id}", headers=headers) as resp:
-                    if resp.status == 200:
-                        resp_data = await resp.json()
-                        if resp_data.get("success"):
-                            if resp_data["data"]["status"] == "paid":
-                                is_paid = True
     except Exception as e:
         logging.error(f"Ошибка при проверке платежа: {e}")
         
@@ -309,7 +270,6 @@ async def handle_webhook(request):
 async def select_withdraw_method(callback: CallbackQuery):
     raw_inline_keyboard = [
         [{"text": "CryptoBot", "callback_data": "wd_method_crypto", "icon_custom_emoji_id": "5361914370068613491"}],
-        [{"text": "Xrocket", "callback_data": "wd_method_xrocket", "icon_custom_emoji_id": "5415897719522744378"}],
         [{"text": "< Назад", "callback_data": "back_to_main"}]
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
@@ -476,28 +436,6 @@ async def admin_approve_req_inline(callback: CallbackQuery):
                             error_text = str(resp_data.get("error", resp_data))
                     else:
                         error_text = f"HTTP {resp.status}"
-
-            else:
-                headers = {
-                    "Api-Key": XROCKET_TOKEN, 
-                    "Content-Type": "application/json",
-                    "User-Agent": DEFAULT_USER_AGENT
-                }
-                payload = {
-                    "tgUserId": target_user_id,
-                    "currency": "USDT",
-                    "amount": amount,
-                    "transferId": str(uuid.uuid4())
-                }
-                async with session.post("https://pay.xrocket.exchange/api/v1/app/transfer", headers=headers, json=payload) as resp:
-                    if resp.status == 200:
-                        resp_data = await resp.json()
-                        if resp_data.get("success"):
-                            success = True
-                        else:
-                            error_text = str(resp_data.get("message", resp_data))
-                    else:
-                        error_text = f"HTTP {resp.status}: {await resp.text()}"
 
     except Exception as e:
         error_text = str(e)
