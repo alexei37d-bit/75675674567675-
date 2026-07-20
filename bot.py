@@ -147,7 +147,8 @@ async def reply_menu_handler(message: Message):
     get_or_create_user(message.from_user.id, message.from_user.full_name)
     bot_info = await bot.get_me()
     welcome_text = f'<b><tg-emoji emoji-id="5451985838630014131">💎</tg-emoji> Добро пожаловать в @{bot_info.username}</b>'
-    await message.answer(welcome_text, parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
+    await message.answer(welcome_text, parse_mode="HTML", reply_markup=reply_main_keyboard())
+    await message.answer('<tg-emoji emoji-id="5445221832074483553">🏠</tg-emoji> Главное меню проекта:', parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
 
 @dp.message(F.text == "Играть")
 async def reply_play_handler(message: Message):
@@ -174,8 +175,8 @@ async def profile_handler(callback: CallbackQuery):
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_handler(callback: CallbackQuery):
     bot_info = await bot.get_me()
-    welcome_text = f'<b><tg-emoji emoji-id="5451985838630014131">💎</tg-emoji> Добро пожаловать в @{bot_info.username}</b>'
-    await callback.message.edit_text(text=welcome_text, parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
+    menu_text = '<tg-emoji emoji-id="5445221832074483553">🏠</tg-emoji> Главное меню проекта:'
+    await callback.message.edit_text(text=menu_text, parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
     await callback.answer()
 
 @dp.callback_query(F.data == "deposit_select")
