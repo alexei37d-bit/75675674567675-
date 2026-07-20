@@ -77,7 +77,7 @@ def main_keyboard(bot_username: str) -> InlineKeyboardMarkup:
             {"text": "Играть", "callback_data": "play", "icon_custom_emoji_id": "5471895876790161593"},
             {"text": "Чат", "callback_data": "chat", "icon_custom_emoji_id": "5235931189591710436"},
         ],
-        [{"text": "Профиль", "callback_data": "profile", "icon_custom_emoji_id": "5197514090108456970"}],
+        [{"text": "Профиль", "callback_data": "profile", "icon_custom_emoji_id": "5471962934114556825"}],
         [
            {"text": "Правила", "url": "https://telegra.ph/Pravila-WXS-game-07-13", "icon_custom_emoji_id": "5296369303661067030"},
            {"text": "Помощь", "callback_data": "help", "icon_custom_emoji_id": "5197269100878907942"},
