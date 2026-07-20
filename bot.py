@@ -56,6 +56,21 @@ class AdminStates(StatesGroup):
 
 WELCOME_TEXT = ('<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>')
 
+# Тексты с премиум-эмодзи для экранов выбора способа пополнения/вывода
+# (в самих кнопках Telegram НЕ поддерживает tg-emoji / HTML — это ограничение Bot API,
+# поэтому премиум-эмодзи выводятся в тексте сообщения над кнопками)
+DEPOSIT_METHODS_TEXT = (
+    '<tg-emoji emoji-id="5361914370068613491">💎</tg-emoji> <b>CryptoBot</b>\n'
+    '<tg-emoji emoji-id="5415897719522744378">🚀</tg-emoji> <b>Xrocket</b>\n\n'
+    'Выберите способ пополнения:'
+)
+
+WITHDRAW_METHODS_TEXT = (
+    '<tg-emoji emoji-id="5361914370068613491">💎</tg-emoji> <b>CryptoBot</b>\n'
+    '<tg-emoji emoji-id="5415897719522744378">🚀</tg-emoji> <b>Xrocket</b>\n\n'
+    'Выберите способ вывода:'
+)
+
 def reply_main_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [[KeyboardButton(text="Баланс"), KeyboardButton(text="Играть"), KeyboardButton(text="Меню")]]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
@@ -144,7 +159,7 @@ async def select_deposit_method(callback: CallbackQuery):
         [InlineKeyboardButton(text="Xrocket", callback_data="dep_method_xrocket")],
         [InlineKeyboardButton(text="< Назад", callback_data="back_to_main")]
     ])
-    await callback.message.edit_text("Выберите способ пополнения:", reply_markup=kb)
+    await callback.message.edit_text(DEPOSIT_METHODS_TEXT, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("dep_method_"))
@@ -200,7 +215,7 @@ async def select_withdraw_method(callback: CallbackQuery):
         [InlineKeyboardButton(text="Xrocket", callback_data="wd_method_xrocket")],
         [InlineKeyboardButton(text="< Назад", callback_data="back_to_main")]
     ])
-    await callback.message.edit_text("Выберите способ вывода:", reply_markup=kb)
+    await callback.message.edit_text(WITHDRAW_METHODS_TEXT, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("wd_method_"))
