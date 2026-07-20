@@ -88,8 +88,8 @@ def main_keyboard(bot_username: str) -> InlineKeyboardMarkup:
 def balance_keyboard() -> InlineKeyboardMarkup:
     raw_inline_keyboard = [
         [
-            {"text": "Пополнить", "callback_data": "deposit_select", "icon_custom_emoji_id": "5206401524200145033"}, 
-            {"text": "Вывести", "callback_data": "withdraw_select", "icon_custom_emoji_id": "5206510891247371052"}
+            {"text": "Пополнить", "callback_data": "deposit_select_balance", "icon_custom_emoji_id": "5206401524200145033"}, 
+            {"text": "Вывести", "callback_data": "withdraw_select_balance", "icon_custom_emoji_id": "5206510891247371052"}
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
@@ -97,8 +97,8 @@ def balance_keyboard() -> InlineKeyboardMarkup:
 def profile_keyboard() -> InlineKeyboardMarkup:
     raw_inline_keyboard = [
         [
-            {"text": "Пополнить", "callback_data": "deposit_select", "icon_custom_emoji_id": "5206401524200145033"}, 
-            {"text": "Вывести", "callback_data": "withdraw_select", "icon_custom_emoji_id": "5206510891247371052"}
+            {"text": "Пополнить", "callback_data": "deposit_select_profile", "icon_custom_emoji_id": "5206401524200145033"}, 
+            {"text": "Вывести", "callback_data": "withdraw_select_profile", "icon_custom_emoji_id": "5206510891247371052"}
         ],
         [{"text": "Транзакции", "callback_data": "transactions"}],
         [{"text": "Настройки", "callback_data": "settings"}],
@@ -183,11 +183,15 @@ async def back_to_balance_handler(callback: CallbackQuery):
     await callback.message.edit_text(text=f'<tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> Баланс : {user["balance"]:.2f} $', parse_mode="HTML", reply_markup=balance_keyboard())
     await callback.answer()
 
-@dp.callback_query(F.data == "deposit_select")
-async def select_deposit_method(callback: CallbackQuery):
+@dp.callback_query(F.data.in_({"deposit_select_balance", "deposit_select_profile"}))
+async def select_deposit_method(callback: CallbackQuery, state: FSMContext):
+    source = callback.data.split("_")[-1]
+    await state.update_data(return_to=source)
+    
+    back_cb = "back_to_balance" if source == "balance" else "profile"
     raw_inline_keyboard = [
         [{"text": "CryptoBot", "callback_data": "dep_method_crypto", "icon_custom_emoji_id": "5361914370068613491"}],
-        [{"text": "< Назад", "callback_data": "back_to_balance"}]
+        [{"text": "< Назад", "callback_data": back_cb}]
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
     await callback.message.edit_text(DEPOSIT_METHODS_TEXT, reply_markup=kb, parse_mode="HTML")
@@ -197,8 +201,12 @@ async def select_deposit_method(callback: CallbackQuery):
 async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     method = callback.data.split("_")[-1]
     await state.update_data(deposit_method=method)
+    
+    data = await state.get_data()
+    back_cb = "back_to_balance" if data.get("return_to") == "balance" else "profile"
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [{"text": "< Назад", "callback_data": "deposit_select"}]
+        [{"text": "< Назад", "callback_data": back_cb}]
     ])
     await callback.message.edit_text("Введите сумму пополнения в USDT (от 0.1 $):", reply_markup=kb, parse_mode="HTML")
     await state.set_state(PaymentStates.waiting_for_deposit_amount)
@@ -206,18 +214,20 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(PaymentStates.waiting_for_deposit_amount)
 async def process_deposit_amount(message: Message, state: FSMContext):
+    data = await state.get_data()
+    back_cb = "back_to_balance" if data.get("return_to") == "balance" else "profile"
+
     try:
         amount = float(message.text.replace(",", "."))
         if amount < 0.1:
-            kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": "deposit_select"}]])
+            kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": back_cb}]])
             await message.answer("Сумма пополнения должна быть от 0.1 $", reply_markup=kb)
             return
     except ValueError:
-        kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": "deposit_select"}]])
+        kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": back_cb}]])
         await message.answer("Пожалуйста, введите корректное число.", reply_markup=kb)
         return
 
-    data = await state.get_data()
     method = data.get("deposit_method")
     
     invoice_url = ""
@@ -304,11 +314,15 @@ async def handle_webhook(request):
             await bot.send_message(user_id, f"✅ Платеж подтвержден! +{amount} $")
     return web.Response(status=200)
 
-@dp.callback_query(F.data == "withdraw_select")
-async def select_withdraw_method(callback: CallbackQuery):
+@dp.callback_query(F.data.in_({"withdraw_select_balance", "withdraw_select_profile"}))
+async def select_withdraw_method(callback: CallbackQuery, state: FSMContext):
+    source = callback.data.split("_")[-1]
+    await state.update_data(return_to=source)
+    
+    back_cb = "back_to_balance" if source == "balance" else "profile"
     raw_inline_keyboard = [
         [{"text": "CryptoBot", "callback_data": "wd_method_crypto", "icon_custom_emoji_id": "5361914370068613491"}],
-        [{"text": "< Назад", "callback_data": "back_to_balance"}]
+        [{"text": "< Назад", "callback_data": back_cb}]
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
     await callback.message.edit_text(WITHDRAW_METHODS_TEXT, reply_markup=kb, parse_mode="HTML")
@@ -318,8 +332,12 @@ async def select_withdraw_method(callback: CallbackQuery):
 async def process_withdraw_method(callback: CallbackQuery, state: FSMContext):
     method = callback.data.split("_")[-1]
     await state.update_data(withdraw_method=method)
+    
+    data = await state.get_data()
+    back_cb = "back_to_balance" if data.get("return_to") == "balance" else "profile"
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [{"text": "< Назад", "callback_data": "withdraw_select"}]
+        [{"text": "< Назад", "callback_data": back_cb}]
     ])
     await callback.message.edit_text("Введите сумму вывода (от 1.1 $):", reply_markup=kb, parse_mode="HTML")
     await state.set_state(PaymentStates.waiting_for_withdraw_amount)
@@ -327,14 +345,17 @@ async def process_withdraw_method(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(PaymentStates.waiting_for_withdraw_amount)
 async def process_withdraw_amount(message: Message, state: FSMContext):
+    data = await state.get_data()
+    back_cb = "back_to_balance" if data.get("return_to") == "balance" else "profile"
+
     try:
         amount = float(message.text.replace(",", "."))
         if amount < 1.1:
-            kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": "withdraw_select"}]])
+            kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": back_cb}]])
             await message.answer("Сумма вывода должна быть от 1.1 $", reply_markup=kb)
             return
     except ValueError:
-        kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": "withdraw_select"}]])
+        kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": back_cb}]])
         await message.answer("Пожалуйста, введите корректное число.", reply_markup=kb)
         return
 
@@ -345,7 +366,6 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    data = await state.get_data()
     method = data.get("withdraw_method")
     
     user["balance"] -= amount
