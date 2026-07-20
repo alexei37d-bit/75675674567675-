@@ -21,7 +21,7 @@ from aiogram.types import (
 
 BOT_TOKEN = "8804355629:AAH6auh84fLdBhSfQkI_dKBnY9QTa-XXm_k"
 CRYPTO_BOT_TOKEN = "611566:AAtSWGwJ3QTFtDPqTVNmvHxi6niSqwCn3eP"
-XROCKET_TOKEN = "71b88b88c7374c6a08d370504"
+XROCKET_TOKEN = "07819b38790d8bf3c2058006e"
 
 ADMIN_IDS = [6130985988, 7921743592]
 
@@ -33,6 +33,9 @@ dp = Dispatcher()
 USERS_DB = {}
 WITHDRAW_REQUESTS = {}
 PENDING_INVOICES = {}
+
+# Универсальный User-Agent для обхода базовых блокировок Cloudflare
+DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
 
 def get_or_create_user(user_id: int, full_name: str) -> dict:
     if user_id not in USERS_DB:
@@ -61,10 +64,14 @@ class AdminStates(StatesGroup):
 WELCOME_TEXT = ('<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>')
 
 DEPOSIT_METHODS_TEXT = (
+    '<tg-emoji emoji-id="5361914370068613491">💎</tg-emoji> <b>CryptoBot</b>\n'
+    '<tg-emoji emoji-id="5415897719522744378">🚀</tg-emoji> <b>Xrocket</b>\n\n'
     'Выберите способ пополнения:'
 )
 
 WITHDRAW_METHODS_TEXT = (
+    '<tg-emoji emoji-id="5361914370068613491">💎</tg-emoji> <b>CryptoBot</b>\n'
+    '<tg-emoji emoji-id="5415897719522744378">🚀</tg-emoji> <b>Xrocket</b>\n\n'
     'Выберите способ вывода:'
 )
 
@@ -186,9 +193,13 @@ async def process_deposit_amount(message: Message, state: FSMContext):
     invoice_id = ""
     
     try:
-        async with aiohttp.ClientSession() as session:
+        # Отключаем проверку SSL (ssl=False) для обхода ошибки 443
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
             if method == "crypto":
-                headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
+                headers = {
+                    "Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN,
+                    "User-Agent": DEFAULT_USER_AGENT
+                }
                 payload = {"asset": "USDT", "amount": str(amount)}
                 async with session.post("https://pay.crypt.bot/api/createInvoice", headers=headers, json=payload) as resp:
                     if resp.status == 200:
@@ -202,7 +213,11 @@ async def process_deposit_amount(message: Message, state: FSMContext):
                         return await message.answer(f"HTTP Ошибка CryptoBot: {resp.status}")
 
             else:
-                headers = {"Rocket-Pay-Key": XROCKET_TOKEN, "Content-Type": "application/json"}
+                headers = {
+                    "Rocket-Pay-Key": XROCKET_TOKEN, 
+                    "Content-Type": "application/json",
+                    "User-Agent": DEFAULT_USER_AGENT
+                }
                 payload = {"amount": amount, "currency": "USDT"}
                 async with session.post("https://pay.ton-rocket.com/tg-invoices", headers=headers, json=payload) as resp:
                     if resp.status == 200:
@@ -240,9 +255,12 @@ async def check_payment_handler(callback: CallbackQuery):
     is_paid = False
     
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
             if method == "crypto":
-                headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
+                headers = {
+                    "Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN,
+                    "User-Agent": DEFAULT_USER_AGENT
+                }
                 async with session.get(f"https://pay.crypt.bot/api/getInvoices?invoice_ids={invoice_id}", headers=headers) as resp:
                     if resp.status == 200:
                         resp_data = await resp.json()
@@ -250,7 +268,10 @@ async def check_payment_handler(callback: CallbackQuery):
                             if resp_data["result"]["items"][0]["status"] == "paid":
                                 is_paid = True
             else:
-                headers = {"Rocket-Pay-Key": XROCKET_TOKEN}
+                headers = {
+                    "Rocket-Pay-Key": XROCKET_TOKEN,
+                    "User-Agent": DEFAULT_USER_AGENT
+                }
                 async with session.get(f"https://pay.ton-rocket.com/tg-invoices/{invoice_id}", headers=headers) as resp:
                     if resp.status == 200:
                         resp_data = await resp.json()
@@ -435,9 +456,12 @@ async def admin_approve_req_inline(callback: CallbackQuery):
     await callback.message.edit_text(f"⏳ Выполняю перевод по заявке #{req_id} через API...")
     
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
             if method == "crypto":
-                headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
+                headers = {
+                    "Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN,
+                    "User-Agent": DEFAULT_USER_AGENT
+                }
                 payload = {
                     "user_id": target_user_id,
                     "asset": "USDT",
@@ -455,7 +479,11 @@ async def admin_approve_req_inline(callback: CallbackQuery):
                         error_text = f"HTTP {resp.status}"
 
             else:
-                headers = {"Rocket-Pay-Key": XROCKET_TOKEN, "Content-Type": "application/json"}
+                headers = {
+                    "Rocket-Pay-Key": XROCKET_TOKEN, 
+                    "Content-Type": "application/json",
+                    "User-Agent": DEFAULT_USER_AGENT
+                }
                 payload = {
                     "tgUserId": target_user_id,
                     "currency": "USDT",
