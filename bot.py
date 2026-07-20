@@ -154,12 +154,13 @@ async def back_to_main_handler(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "deposit_select")
 async def select_deposit_method(callback: CallbackQuery):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="CryptoBot", callback_data="dep_method_crypto")],
-        [InlineKeyboardButton(text="Xrocket", callback_data="dep_method_xrocket")],
-        [InlineKeyboardButton(text="< Назад", callback_data="back_to_main")]
-    ])
-    await callback.message.edit_text(DEPOSIT_METHODS_TEXT, parse_mode="HTML", reply_markup=kb)
+    raw_inline_keyboard = [
+        [{"text": "CryptoBot", "callback_data": "dep_method_crypto", "icon_custom_emoji_id": "5361914370068613491"}],
+        [{"text": "Xrocket", "callback_data": "dep_method_xrocket", "icon_custom_emoji_id": "5415897719522744378"}],
+        [{"text": "< Назад", "callback_data": "back_to_main"}]
+    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
+    await callback.message.edit_text("Выберите способ пополнения:", reply_markup=kb)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("dep_method_"))
@@ -210,12 +211,13 @@ async def handle_webhook(request):
 
 @dp.callback_query(F.data == "withdraw_select")
 async def select_withdraw_method(callback: CallbackQuery):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="CryptoBot", callback_data="wd_method_crypto")],
-        [InlineKeyboardButton(text="Xrocket", callback_data="wd_method_xrocket")],
-        [InlineKeyboardButton(text="< Назад", callback_data="back_to_main")]
-    ])
-    await callback.message.edit_text(WITHDRAW_METHODS_TEXT, parse_mode="HTML", reply_markup=kb)
+    raw_inline_keyboard = [
+        [{"text": "CryptoBot", "callback_data": "wd_method_crypto", "icon_custom_emoji_id": "5361914370068613491"}],
+        [{"text": "Xrocket", "callback_data": "wd_method_xrocket", "icon_custom_emoji_id": "5415897719522744378"}],
+        [{"text": "< Назад", "callback_data": "back_to_main"}]
+    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
+    await callback.message.edit_text("Выберите способ вывода:", reply_markup=kb)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("wd_method_"))
