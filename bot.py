@@ -44,7 +44,6 @@ def get_or_create_user(user_id: int, full_name: str) -> dict:
             "turnover": 0.0,
             "deposits": 0.0,
             "withdrawals": 0.0,
-            "wager_required": 0.0,
         }
     return USERS_DB[user_id]
 
@@ -62,14 +61,10 @@ class AdminStates(StatesGroup):
 WELCOME_TEXT = ('<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>')
 
 DEPOSIT_METHODS_TEXT = (
-    '<tg-emoji emoji-id="5361914370068613491">💎</tg-emoji> <b>CryptoBot</b>\n'
-    '<tg-emoji emoji-id="5415897719522744378">🚀</tg-emoji> <b>Xrocket</b>\n\n'
     'Выберите способ пополнения:'
 )
 
 WITHDRAW_METHODS_TEXT = (
-    '<tg-emoji emoji-id="5361914370068613491">💎</tg-emoji> <b>CryptoBot</b>\n'
-    '<tg-emoji emoji-id="5415897719522744378">🚀</tg-emoji> <b>Xrocket</b>\n\n'
     'Выберите способ вывода:'
 )
 
@@ -114,13 +109,11 @@ def profile_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
 
 def get_profile_message(user: dict) -> str:
-    wager_left = max(0.0, user['wager_required'] - user['turnover'])
     return (
         f"<tg-emoji emoji-id=\"5275979556308674886\">👤</tg-emoji> <b>Имя:</b> {user['name']}\n"
         f"<tg-emoji emoji-id=\"5278753302023004775\">ℹ️</tg-emoji> <b>Ваш ID:</b> <code>{user['id']}</code>\n"
         f"<tg-emoji emoji-id=\"5276412364458059956\">🕓</tg-emoji> <b>Регистрация:</b> {user['reg_date']}\n\n"
-        f"<tg-emoji emoji-id=\"5276398496008663230\">👝</tg-emoji> <b>Оборот:</b> {user['turnover']:.2f} $\n"
-        f"⏳ <b>Осталось отыграть:</b> {wager_left:.2f} $\n\n"
+        f"<tg-emoji emoji-id=\"5276398496008663230\">👝</tg-emoji> <b>Оборот:</b> {user['turnover']:.2f} $\n\n"
         f"<tg-emoji emoji-id=\"5206401524200145033\">🔼</tg-emoji> <b>Пополнений:</b> {user['deposits']:.2f} $\n"
         f"<tg-emoji emoji-id=\"5206510891247371052\">🔽</tg-emoji> <b>Выводов:</b> {user['withdrawals']:.2f} $"
     )
@@ -190,7 +183,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
     method = data.get("deposit_method")
     
     invoice_url = ""
-    invoice_id = str(uuid.uuid4())
+    invoice_id = ""
     
     try:
         async with aiohttp.ClientSession() as session:
@@ -198,24 +191,34 @@ async def process_deposit_amount(message: Message, state: FSMContext):
                 headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
                 payload = {"asset": "USDT", "amount": str(amount)}
                 async with session.post("https://pay.crypt.bot/api/createInvoice", headers=headers, json=payload) as resp:
-                    resp_data = await resp.json()
-                    if resp_data.get("ok"):
-                        invoice_id = str(resp_data["result"]["invoice_id"])
-                        invoice_url = resp_data["result"]["bot_invoice_url"]
+                    if resp.status == 200:
+                        resp_data = await resp.json()
+                        if resp_data.get("ok"):
+                            invoice_id = str(resp_data["result"]["invoice_id"])
+                            invoice_url = resp_data["result"]["bot_invoice_url"]
+                        else:
+                            return await message.answer(f"Ошибка API CryptoBot: {resp_data.get('error', 'Неизвестная ошибка')}")
                     else:
-                        return await message.answer("Ошибка API CryptoBot.")
+                        return await message.answer(f"HTTP Ошибка CryptoBot: {resp.status}")
+
             else:
                 headers = {"Rocket-Pay-Key": XROCKET_TOKEN, "Content-Type": "application/json"}
                 payload = {"amount": amount, "currency": "USDT"}
                 async with session.post("https://pay.ton-rocket.com/tg-invoices", headers=headers, json=payload) as resp:
-                    resp_data = await resp.json()
-                    if resp_data.get("success"):
-                        invoice_id = str(resp_data["data"]["id"])
-                        invoice_url = resp_data["data"]["link"]
+                    if resp.status == 200:
+                        resp_data = await resp.json()
+                        if resp_data.get("success"):
+                            invoice_id = str(resp_data["data"]["id"])
+                            invoice_url = resp_data["data"]["link"]
+                        else:
+                            error_msg = resp_data.get("message", "Неизвестная ошибка")
+                            return await message.answer(f"Ошибка API XRocket: {error_msg}")
                     else:
-                        return await message.answer("Ошибка API XRocket.")
+                        error_text = await resp.text()
+                        return await message.answer(f"HTTP Ошибка XRocket: {resp.status}\nОтвет: {error_text}")
+
     except Exception as e:
-        return await message.answer("Ошибка соединения с платежной системой.")
+        return await message.answer(f"Ошибка соединения с платежной системой:\n{str(e)}")
 
     PENDING_INVOICES[invoice_id] = {"user_id": message.from_user.id, "amount": amount, "method": method}
     
@@ -241,19 +244,21 @@ async def check_payment_handler(callback: CallbackQuery):
             if method == "crypto":
                 headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
                 async with session.get(f"https://pay.crypt.bot/api/getInvoices?invoice_ids={invoice_id}", headers=headers) as resp:
-                    resp_data = await resp.json()
-                    if resp_data.get("ok") and resp_data["result"]["items"]:
-                        if resp_data["result"]["items"][0]["status"] == "paid":
-                            is_paid = True
+                    if resp.status == 200:
+                        resp_data = await resp.json()
+                        if resp_data.get("ok") and resp_data["result"]["items"]:
+                            if resp_data["result"]["items"][0]["status"] == "paid":
+                                is_paid = True
             else:
                 headers = {"Rocket-Pay-Key": XROCKET_TOKEN}
                 async with session.get(f"https://pay.ton-rocket.com/tg-invoices/{invoice_id}", headers=headers) as resp:
-                    resp_data = await resp.json()
-                    if resp_data.get("success"):
-                        if resp_data["data"]["status"] == "paid":
-                            is_paid = True
-    except Exception:
-        pass
+                    if resp.status == 200:
+                        resp_data = await resp.json()
+                        if resp_data.get("success"):
+                            if resp_data["data"]["status"] == "paid":
+                                is_paid = True
+    except Exception as e:
+        logging.error(f"Ошибка при проверке платежа: {e}")
         
     if is_paid:
         user_id = inv_data["user_id"]
@@ -261,15 +266,14 @@ async def check_payment_handler(callback: CallbackQuery):
         user = get_or_create_user(user_id, "")
         user["balance"] += amount
         user["deposits"] += amount
-        user["wager_required"] += amount
         del PENDING_INVOICES[invoice_id]
         
-        await callback.message.edit_text(f"✅ Платеж подтвержден! Баланс пополнен на {amount} $.\n\n<i>Для вывода средств вам необходимо будет отыграть {amount} $ (сделать ставок на эту сумму).</i>", parse_mode="HTML")
+        await callback.message.edit_text(f"✅ Платеж подтвержден! Баланс пополнен на {amount} $.", parse_mode="HTML")
         await callback.answer()
     else:
         await callback.answer("Счет еще не оплачен.", show_alert=True)
 
-# ВЕБХУК ДЛЯ ПЛАТЕЖЕК (Оставлен для обратной совместимости, если потребуется)
+# ВЕБХУК ДЛЯ ПЛАТЕЖЕК 
 async def handle_webhook(request):
     data = await request.json()
     if data.get("status") == "paid":
@@ -278,7 +282,6 @@ async def handle_webhook(request):
         if user_id in USERS_DB:
             USERS_DB[user_id]["balance"] += amount
             USERS_DB[user_id]["deposits"] += amount
-            USERS_DB[user_id]["wager_required"] += amount
             await bot.send_message(user_id, f"✅ Платеж подтвержден! +{amount} $")
     return web.Response(status=200)
 
@@ -316,12 +319,6 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
     
     if user["balance"] < amount:
         await message.answer("❌ Недостаточно средств на балансе.")
-        await state.clear()
-        return
-        
-    wager_left = user["wager_required"] - user["turnover"]
-    if wager_left > 0:
-        await message.answer(f"❌ Для вывода средств необходимо отыграть депозиты. Осталось отыграть: <b>{wager_left:.2f} $</b>", parse_mode="HTML")
         await state.clear()
         return
 
@@ -430,7 +427,7 @@ async def admin_approve_req_inline(callback: CallbackQuery):
     req = WITHDRAW_REQUESTS[req_id]
     amount = req["amount"]
     method = req["method"]
-    target_user_id = req["user_id"]
+    target_user_id = int(req["user_id"])
     
     success = False
     error_text = ""
@@ -448,11 +445,15 @@ async def admin_approve_req_inline(callback: CallbackQuery):
                     "spend_id": str(uuid.uuid4())
                 }
                 async with session.post("https://pay.crypt.bot/api/transfer", headers=headers, json=payload) as resp:
-                    resp_data = await resp.json()
-                    if resp_data.get("ok"):
-                        success = True
+                    if resp.status == 200:
+                        resp_data = await resp.json()
+                        if resp_data.get("ok"):
+                            success = True
+                        else:
+                            error_text = str(resp_data.get("error", resp_data))
                     else:
-                        error_text = str(resp_data)
+                        error_text = f"HTTP {resp.status}"
+
             else:
                 headers = {"Rocket-Pay-Key": XROCKET_TOKEN, "Content-Type": "application/json"}
                 payload = {
@@ -462,11 +463,15 @@ async def admin_approve_req_inline(callback: CallbackQuery):
                     "transferId": str(uuid.uuid4())
                 }
                 async with session.post("https://pay.ton-rocket.com/app/transfer", headers=headers, json=payload) as resp:
-                    resp_data = await resp.json()
-                    if resp_data.get("success"):
-                        success = True
+                    if resp.status == 200:
+                        resp_data = await resp.json()
+                        if resp_data.get("success"):
+                            success = True
+                        else:
+                            error_text = str(resp_data.get("message", resp_data))
                     else:
-                        error_text = str(resp_data)
+                        error_text = f"HTTP {resp.status}: {await resp.text()}"
+
     except Exception as e:
         error_text = str(e)
 
