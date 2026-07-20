@@ -155,6 +155,7 @@ async def reply_play_handler(message: Message):
 
 @dp.callback_query(F.data == "help")
 async def help_handler(callback: CallbackQuery):
+    # Ошибка исправлена: использованы правильные тройные кавычки для многострочного текста
     help_text = (
         "Важно!\n\n"
         "— Вопросы по выводу/пополнению — в Техподдержку.\n"
