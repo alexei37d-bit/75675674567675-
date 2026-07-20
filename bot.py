@@ -4,6 +4,7 @@ import aiohttp
 from aiohttp import web
 from datetime import datetime
 import random
+import uuid
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
@@ -19,6 +20,8 @@ from aiogram.types import (
 )
 
 BOT_TOKEN = "8804355629:AAH6auh84fLdBhSfQkI_dKBnY9QTa-XXm_k"
+CRYPTO_BOT_TOKEN = "611566:AAtSWGwJ3QTFtDPqTVNmvHxi6niSqwCn3eP"
+XROCKET_TOKEN = "71b88b88c7374c6a08d370504"
 
 ADMIN_IDS = [6130985988, 7921743592]
 
@@ -29,6 +32,7 @@ dp = Dispatcher()
 
 USERS_DB = {}
 WITHDRAW_REQUESTS = {}
+PENDING_INVOICES = {}
 
 def get_or_create_user(user_id: int, full_name: str) -> dict:
     if user_id not in USERS_DB:
@@ -40,6 +44,7 @@ def get_or_create_user(user_id: int, full_name: str) -> dict:
             "turnover": 0.0,
             "deposits": 0.0,
             "withdrawals": 0.0,
+            "wager_required": 0.0,
         }
     return USERS_DB[user_id]
 
@@ -56,9 +61,6 @@ class AdminStates(StatesGroup):
 
 WELCOME_TEXT = ('<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>')
 
-# Тексты с премиум-эмодзи для экранов выбора способа пополнения/вывода
-# (в самих кнопках Telegram НЕ поддерживает tg-emoji / HTML — это ограничение Bot API,
-# поэтому премиум-эмодзи выводятся в тексте сообщения над кнопками)
 DEPOSIT_METHODS_TEXT = (
     '<tg-emoji emoji-id="5361914370068613491">💎</tg-emoji> <b>CryptoBot</b>\n'
     '<tg-emoji emoji-id="5415897719522744378">🚀</tg-emoji> <b>Xrocket</b>\n\n'
@@ -112,11 +114,13 @@ def profile_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
 
 def get_profile_message(user: dict) -> str:
+    wager_left = max(0.0, user['wager_required'] - user['turnover'])
     return (
         f"<tg-emoji emoji-id=\"5275979556308674886\">👤</tg-emoji> <b>Имя:</b> {user['name']}\n"
         f"<tg-emoji emoji-id=\"5278753302023004775\">ℹ️</tg-emoji> <b>Ваш ID:</b> <code>{user['id']}</code>\n"
         f"<tg-emoji emoji-id=\"5276412364458059956\">🕓</tg-emoji> <b>Регистрация:</b> {user['reg_date']}\n\n"
-        f"<tg-emoji emoji-id=\"5276398496008663230\">👝</tg-emoji> <b>Оборот:</b> {user['turnover']:.2f} $\n\n"
+        f"<tg-emoji emoji-id=\"5276398496008663230\">👝</tg-emoji> <b>Оборот:</b> {user['turnover']:.2f} $\n"
+        f"⏳ <b>Осталось отыграть:</b> {wager_left:.2f} $\n\n"
         f"<tg-emoji emoji-id=\"5206401524200145033\">🔼</tg-emoji> <b>Пополнений:</b> {user['deposits']:.2f} $\n"
         f"<tg-emoji emoji-id=\"5206510891247371052\">🔽</tg-emoji> <b>Выводов:</b> {user['withdrawals']:.2f} $"
     )
@@ -125,7 +129,7 @@ def get_profile_message(user: dict) -> str:
 async def start_handler(message: Message):
     get_or_create_user(message.from_user.id, message.from_user.full_name)
     await message.answer(WELCOME_TEXT, parse_mode="HTML", reply_markup=reply_main_keyboard())
-    await message.answer('<tg-emoji emoji-id="5463225256942539355">🏠</tg-emoji> Главное меню проекта:', parse_mode="HTML", reply_markup=main_keyboard())
+    await message.answer('<tg-emoji emoji-id="5445221832074483553">🏠</tg-emoji> Главное меню проекта:', parse_mode="HTML", reply_markup=main_keyboard())
 
 @dp.message(F.text == "Баланс")
 async def reply_balance_handler(message: Message):
@@ -160,14 +164,14 @@ async def select_deposit_method(callback: CallbackQuery):
         [{"text": "< Назад", "callback_data": "back_to_main"}]
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
-    await callback.message.edit_text("Выберите способ пополнения:", reply_markup=kb)
+    await callback.message.edit_text(DEPOSIT_METHODS_TEXT, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("dep_method_"))
 async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     method = callback.data.split("_")[-1]
     await state.update_data(deposit_method=method)
-    await callback.message.answer("Введите сумму пополнения (от 0.01 $):")
+    await callback.message.answer("Введите сумму пополнения в USDT (от 0.1 $):")
     await state.set_state(PaymentStates.waiting_for_deposit_amount)
     await callback.answer()
 
@@ -175,8 +179,8 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
 async def process_deposit_amount(message: Message, state: FSMContext):
     try:
         amount = float(message.text.replace(",", "."))
-        if amount < 0.01:
-            await message.answer("Сумма пополнения должна быть от 0.01 $")
+        if amount < 0.1:
+            await message.answer("Сумма пополнения должна быть от 0.1 $")
             return
     except ValueError:
         await message.answer("Пожалуйста, введите корректное число.")
@@ -185,27 +189,96 @@ async def process_deposit_amount(message: Message, state: FSMContext):
     data = await state.get_data()
     method = data.get("deposit_method")
     
-    if method == "crypto":
-        invoice_url = "http://t.me/send?start=IVL1pjPkm04v"
-    else:
-        invoice_url = "https://t.me/xrocket?start=inv_ltGmVOFnRWoVk9U"
+    invoice_url = ""
+    invoice_id = str(uuid.uuid4())
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            if method == "crypto":
+                headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
+                payload = {"asset": "USDT", "amount": str(amount)}
+                async with session.post("https://pay.crypt.bot/api/createInvoice", headers=headers, json=payload) as resp:
+                    resp_data = await resp.json()
+                    if resp_data.get("ok"):
+                        invoice_id = str(resp_data["result"]["invoice_id"])
+                        invoice_url = resp_data["result"]["bot_invoice_url"]
+                    else:
+                        return await message.answer("Ошибка API CryptoBot.")
+            else:
+                headers = {"Rocket-Pay-Key": XROCKET_TOKEN, "Content-Type": "application/json"}
+                payload = {"amount": amount, "currency": "USDT"}
+                async with session.post("https://pay.ton-rocket.com/tg-invoices", headers=headers, json=payload) as resp:
+                    resp_data = await resp.json()
+                    if resp_data.get("success"):
+                        invoice_id = str(resp_data["data"]["id"])
+                        invoice_url = resp_data["data"]["link"]
+                    else:
+                        return await message.answer("Ошибка API XRocket.")
+    except Exception as e:
+        return await message.answer("Ошибка соединения с платежной системой.")
+
+    PENDING_INVOICES[invoice_id] = {"user_id": message.from_user.id, "amount": amount, "method": method}
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Оплатить счет", url=invoice_url)]
+        [InlineKeyboardButton(text="Оплатить счет", url=invoice_url)],
+        [InlineKeyboardButton(text="Проверить оплату", callback_data=f"check_pay_{invoice_id}")]
     ])
-    await message.answer(f"Оплата на сумму <b>{amount} $</b>\nПерейдите по ссылке. Баланс обновится автоматически.", parse_mode="HTML", reply_markup=kb)
+    await message.answer(f"Оплата на сумму <b>{amount} $</b>\nПерейдите по ссылке. После оплаты нажмите кнопку ниже.", parse_mode="HTML", reply_markup=kb)
     await state.clear()
 
-# ВЕБХУК ДЛЯ ПЛАТЕЖЕК
+@dp.callback_query(F.data.startswith("check_pay_"))
+async def check_payment_handler(callback: CallbackQuery):
+    invoice_id = callback.data.split("check_pay_")[1]
+    if invoice_id not in PENDING_INVOICES:
+        return await callback.answer("Счет не найден или уже оплачен.", show_alert=True)
+    
+    inv_data = PENDING_INVOICES[invoice_id]
+    method = inv_data["method"]
+    is_paid = False
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            if method == "crypto":
+                headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
+                async with session.get(f"https://pay.crypt.bot/api/getInvoices?invoice_ids={invoice_id}", headers=headers) as resp:
+                    resp_data = await resp.json()
+                    if resp_data.get("ok") and resp_data["result"]["items"]:
+                        if resp_data["result"]["items"][0]["status"] == "paid":
+                            is_paid = True
+            else:
+                headers = {"Rocket-Pay-Key": XROCKET_TOKEN}
+                async with session.get(f"https://pay.ton-rocket.com/tg-invoices/{invoice_id}", headers=headers) as resp:
+                    resp_data = await resp.json()
+                    if resp_data.get("success"):
+                        if resp_data["data"]["status"] == "paid":
+                            is_paid = True
+    except Exception:
+        pass
+        
+    if is_paid:
+        user_id = inv_data["user_id"]
+        amount = inv_data["amount"]
+        user = get_or_create_user(user_id, "")
+        user["balance"] += amount
+        user["deposits"] += amount
+        user["wager_required"] += amount
+        del PENDING_INVOICES[invoice_id]
+        
+        await callback.message.edit_text(f"✅ Платеж подтвержден! Баланс пополнен на {amount} $.\n\n<i>Для вывода средств вам необходимо будет отыграть {amount} $ (сделать ставок на эту сумму).</i>", parse_mode="HTML")
+        await callback.answer()
+    else:
+        await callback.answer("Счет еще не оплачен.", show_alert=True)
+
+# ВЕБХУК ДЛЯ ПЛАТЕЖЕК (Оставлен для обратной совместимости, если потребуется)
 async def handle_webhook(request):
     data = await request.json()
-    # Логика обработки callback от платежки (пример для CryptoBot)
     if data.get("status") == "paid":
         user_id = data.get("user_id")
         amount = float(data.get("amount"))
         if user_id in USERS_DB:
             USERS_DB[user_id]["balance"] += amount
             USERS_DB[user_id]["deposits"] += amount
+            USERS_DB[user_id]["wager_required"] += amount
             await bot.send_message(user_id, f"✅ Платеж подтвержден! +{amount} $")
     return web.Response(status=200)
 
@@ -217,14 +290,14 @@ async def select_withdraw_method(callback: CallbackQuery):
         [{"text": "< Назад", "callback_data": "back_to_main"}]
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
-    await callback.message.edit_text("Выберите способ вывода:", reply_markup=kb)
+    await callback.message.edit_text(WITHDRAW_METHODS_TEXT, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("wd_method_"))
 async def process_withdraw_method(callback: CallbackQuery, state: FSMContext):
     method = callback.data.split("_")[-1]
     await state.update_data(withdraw_method=method)
-    await callback.message.answer("Введите сумму вывода (от 1 $):")
+    await callback.message.answer("Введите сумму вывода (от 1.1 $):")
     await state.set_state(PaymentStates.waiting_for_withdraw_amount)
     await callback.answer()
 
@@ -232,16 +305,23 @@ async def process_withdraw_method(callback: CallbackQuery, state: FSMContext):
 async def process_withdraw_amount(message: Message, state: FSMContext):
     try:
         amount = float(message.text.replace(",", "."))
-        if amount < 1:
-            await message.answer("Сумма вывода должна быть от 1 $")
+        if amount < 1.1:
+            await message.answer("Сумма вывода должна быть от 1.1 $")
             return
     except ValueError:
         await message.answer("Пожалуйста, введите корректное число.")
         return
 
     user = get_or_create_user(message.from_user.id, message.from_user.full_name)
+    
     if user["balance"] < amount:
         await message.answer("❌ Недостаточно средств на балансе.")
+        await state.clear()
+        return
+        
+    wager_left = user["wager_required"] - user["turnover"]
+    if wager_left > 0:
+        await message.answer(f"❌ Для вывода средств необходимо отыграть депозиты. Осталось отыграть: <b>{wager_left:.2f} $</b>", parse_mode="HTML")
         await state.clear()
         return
 
@@ -252,7 +332,7 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
     req_id = random.randint(10000, 99999)
     WITHDRAW_REQUESTS[req_id] = {"user_id": message.from_user.id, "amount": amount, "method": method, "status": "pending"}
     
-    await message.answer(f"✅ Заявка #{req_id} создана.")
+    await message.answer(f"✅ Заявка #{req_id} создана и отправлена на проверку администратору.")
     await state.clear()
     
     for admin_id in ADMIN_IDS:
@@ -338,38 +418,78 @@ async def admin_show_requests(callback: CallbackQuery):
     for req_id in pending_reqs:
         req = WITHDRAW_REQUESTS[req_id]
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Одобрить", callback_data=f"admin_approve_req_{req_id}")], [InlineKeyboardButton(text="Отклонить", callback_data=f"admin_reject_req_{req_id}")]])
-        await callback.message.answer(f"🚨 Заявка #{req_id}\nСумма: {req['amount']} $\nСпособ: {req['method']}", reply_markup=kb)
+        await callback.message.answer(f"🚨 Заявка #{req_id}\nСумма: {req['amount']} $\nСпособ: {req['method']}\nID: {req['user_id']}", reply_markup=kb)
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_approve_req_"))
-async def admin_approve_req_inline(callback: CallbackQuery, state: FSMContext):
+async def admin_approve_req_inline(callback: CallbackQuery):
     req_id = int(callback.data.split("_")[-1])
-    await state.update_data(approve_req_id=req_id)
-    await callback.message.answer(f"Отправьте ссылку на чек для заявки #{req_id}:")
-    await state.set_state(AdminStates.waiting_for_approve_link)
-    await callback.answer()
-
-@dp.message(AdminStates.waiting_for_approve_link)
-async def process_approve_link(message: Message, state: FSMContext):
-    check_url = message.text
-    data = await state.get_data()
-    req_id = data.get("approve_req_id")
+    if req_id not in WITHDRAW_REQUESTS or WITHDRAW_REQUESTS[req_id]["status"] != "pending":
+        return await callback.answer("Заявка уже обработана.", show_alert=True)
+        
     req = WITHDRAW_REQUESTS[req_id]
-    req["status"] = "approved"
-    USERS_DB[req["user_id"]]["withdrawals"] += req["amount"]
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Активировать чек", url=check_url)]])
-    await bot.send_message(req["user_id"], "✅ Ваш вывод одобрен.", reply_markup=kb)
-    await message.answer("✅ Чек отправлен.")
-    await state.clear()
+    amount = req["amount"]
+    method = req["method"]
+    target_user_id = req["user_id"]
+    
+    success = False
+    error_text = ""
+    
+    await callback.message.edit_text(f"⏳ Выполняю перевод по заявке #{req_id} через API...")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            if method == "crypto":
+                headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
+                payload = {
+                    "user_id": target_user_id,
+                    "asset": "USDT",
+                    "amount": str(amount),
+                    "spend_id": str(uuid.uuid4())
+                }
+                async with session.post("https://pay.crypt.bot/api/transfer", headers=headers, json=payload) as resp:
+                    resp_data = await resp.json()
+                    if resp_data.get("ok"):
+                        success = True
+                    else:
+                        error_text = str(resp_data)
+            else:
+                headers = {"Rocket-Pay-Key": XROCKET_TOKEN, "Content-Type": "application/json"}
+                payload = {
+                    "tgUserId": target_user_id,
+                    "currency": "USDT",
+                    "amount": amount,
+                    "transferId": str(uuid.uuid4())
+                }
+                async with session.post("https://pay.ton-rocket.com/app/transfer", headers=headers, json=payload) as resp:
+                    resp_data = await resp.json()
+                    if resp_data.get("success"):
+                        success = True
+                    else:
+                        error_text = str(resp_data)
+    except Exception as e:
+        error_text = str(e)
+
+    if success:
+        req["status"] = "approved"
+        USERS_DB[target_user_id]["withdrawals"] += amount
+        await bot.send_message(target_user_id, f"✅ Ваш вывод на сумму <b>{amount} $</b> успешно зачислен на ваш кошелек!", parse_mode="HTML")
+        await callback.message.edit_text(f"✅ Заявка #{req_id} одобрена, средства переведены по API.")
+    else:
+        await callback.message.edit_text(f"❌ Ошибка API при переводе (#{req_id}).\nЛог: <code>{error_text}</code>", parse_mode="HTML")
+    await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_reject_req_"))
 async def admin_reject_req_inline(callback: CallbackQuery):
     req_id = int(callback.data.split("_")[-1])
+    if req_id not in WITHDRAW_REQUESTS or WITHDRAW_REQUESTS[req_id]["status"] != "pending":
+        return await callback.answer("Заявка уже обработана.", show_alert=True)
+        
     req = WITHDRAW_REQUESTS[req_id]
     req["status"] = "rejected"
     USERS_DB[req["user_id"]]["balance"] += req["amount"]
-    await bot.send_message(req["user_id"], f"❌ Вывод {req['amount']} $ отклонен.")
-    await callback.message.edit_text("❌ ОТКЛОНЕНО")
+    await bot.send_message(req["user_id"], f"❌ Вывод {req['amount']} $ отклонен, средства возвращены на баланс.")
+    await callback.message.edit_text(f"❌ Заявка #{req_id} ОТКЛОНЕНА")
     await callback.answer()
 
 async def start_web_server():
