@@ -115,44 +115,44 @@ def help_keyboard() -> InlineKeyboardMarkup:
 
 def get_profile_message(user: dict) -> str:
     return (
-        f"<b>👤 Имя: {user['name']}</b>\n"
-        f"<b>ℹ️ Ваш ID: {user['id']}</b>\n"
-        f"<b>🕓 Регистрация: {user['reg_date']}</b>\n\n"
-        f"<b>👝 Оборот: {user['turnover']:.2f} $</b>\n\n"
-        f"<b>🔼 Пополнений: {user['deposits']:.2f} $</b>\n"
-        f"<b>🔽 Выводов: {user['withdrawals']:.2f} $</b>"
+        f"👤 <b>Имя:</b> {user['name']}\n"
+        f"ℹ️ <b>Ваш ID:</b> <code>{user['id']}</code>\n"
+        f"🕓 <b>Регистрация:</b> {user['reg_date']}\n\n"
+        f"👝 <b>Оборот:</b> {user['turnover']:.2f} $\n\n"
+        f"🔼 <b>Пополнений:</b> {user['deposits']:.2f} $\n"
+        f"🔽 <b>Выводов:</b> {user['withdrawals']:.2f} $"
     )
 
 @dp.message(CommandStart())
 async def start_handler(message: Message):
     get_or_create_user(message.from_user.id, message.from_user.full_name)
     bot_info = await bot.get_me()
-    welcome_text = f'<b>💎 Добро пожаловать в @{bot_info.username}</b>'
+    welcome_text = f'💎 <b>Добро пожаловать в</b> @{bot_info.username}'
     
     await message.answer(welcome_text, parse_mode="HTML", reply_markup=reply_main_keyboard())
-    await message.answer('<b>🏠 Главное меню проекта:</b>', parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
+    await message.answer('🏠 <b>Главное меню проекта:</b>', parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
 
 @dp.message(F.text == "Баланс")
 async def reply_balance_handler(message: Message):
     user = get_or_create_user(message.from_user.id, message.from_user.full_name)
-    await message.answer(text=f'<b>💵 Баланс : {user["balance"]:.2f} $</b>', parse_mode="HTML", reply_markup=balance_keyboard())
+    await message.answer(text=f'💵 <b>Баланс :</b> {user["balance"]:.2f} $', parse_mode="HTML", reply_markup=balance_keyboard())
 
 @dp.message(F.text == "Меню")
 async def reply_menu_handler(message: Message):
     get_or_create_user(message.from_user.id, message.from_user.full_name)
     bot_info = await bot.get_me()
-    welcome_text = f'<b>💎 Добро пожаловать в @{bot_info.username}</b>'
+    welcome_text = f'💎 <b>Добро пожаловать в</b> @{bot_info.username}'
     await message.answer(welcome_text, parse_mode="HTML", reply_markup=reply_main_keyboard())
-    await message.answer('<b>🏠 Главное меню проекта:</b>', parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
+    await message.answer('🏠 <b>Главное меню проекта:</b>', parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
 
 @dp.message(F.text == "Играть")
 async def reply_play_handler(message: Message):
-    await message.answer("<b>🎰 Раздел с играми находится в разработке!</b>", parse_mode="HTML")
+    await message.answer("🎰 <b>Раздел с играми находится в разработке!</b>", parse_mode="HTML")
 
 @dp.callback_query(F.data == "help")
 async def help_handler(callback: CallbackQuery):
     help_text = (
-        '<b>⚠️ Важно!</b>\n\n'
+        '⚠️ <b>Важно!</b>\n\n'
         '<b>— Вопросы по выводу/пополнению — в Техподдержку.</b>\n'
         '<b>— Технические сбои и ошибки — в Техподдержку.</b>\n'
         '<b>— Предложения и пожелания по работе казино — тоже в Техподдержку.</b>'
@@ -169,14 +169,14 @@ async def profile_handler(callback: CallbackQuery):
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_handler(callback: CallbackQuery):
     bot_info = await bot.get_me()
-    menu_text = '<b>🏠 Главное меню проекта:</b>'
+    menu_text = '🏠 <b>Главное меню проекта:</b>'
     await callback.message.edit_text(text=menu_text, parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
     await callback.answer()
 
 @dp.callback_query(F.data == "back_to_balance")
 async def back_to_balance_handler(callback: CallbackQuery):
     user = get_or_create_user(callback.from_user.id, callback.from_user.full_name)
-    await callback.message.edit_text(text=f'<b>💵 Баланс : {user["balance"]:.2f} $</b>', parse_mode="HTML", reply_markup=balance_keyboard())
+    await callback.message.edit_text(text=f'💵 <b>Баланс :</b> {user["balance"]:.2f} $', parse_mode="HTML", reply_markup=balance_keyboard())
     await callback.answer()
 
 @dp.callback_query(F.data.in_({"deposit_select_balance", "deposit_select_profile"}))
@@ -245,13 +245,13 @@ async def process_deposit_amount(message: Message, state: FSMContext):
                             invoice_url = resp_data["result"]["bot_invoice_url"]
                         else:
                             err_msg = html.escape(str(resp_data.get('error', 'Неизвестная ошибка')))
-                            return await message.answer(f"<b>Ошибка API CryptoBot: {err_msg}</b>", parse_mode="HTML")
+                            return await message.answer(f"<b>Ошибка API CryptoBot:</b> {err_msg}", parse_mode="HTML")
                     else:
-                        return await message.answer(f"<b>HTTP Ошибка CryptoBot: {resp.status}</b>", parse_mode="HTML")
+                        return await message.answer(f"<b>HTTP Ошибка CryptoBot:</b> {resp.status}", parse_mode="HTML")
 
     except Exception as e:
         err_msg = html.escape(str(e))
-        return await message.answer(f"<b>Ошибка соединения с платежной системой:\n{err_msg}</b>", parse_mode="HTML")
+        return await message.answer(f"<b>Ошибка соединения с платежной системой:</b>\n{err_msg}", parse_mode="HTML")
 
     PENDING_INVOICES[invoice_id] = {"user_id": message.from_user.id, "amount": amount, "method": method}
     
@@ -259,7 +259,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="Оплатить счет", url=invoice_url)],
         [InlineKeyboardButton(text="Проверить оплату", callback_data=f"check_pay_{invoice_id}")]
     ])
-    await message.answer(f"<b>Оплата на сумму {amount} $\nПерейдите по ссылке. После оплаты нажмите кнопку ниже.</b>", parse_mode="HTML", reply_markup=kb)
+    await message.answer(f"<b>Оплата на сумму</b> {amount} $\n<b>Перейдите по ссылке. После оплаты нажмите кнопку ниже.</b>", parse_mode="HTML", reply_markup=kb)
     await state.clear()
 
 @dp.callback_query(F.data.startswith("check_pay_"))
@@ -296,7 +296,7 @@ async def check_payment_handler(callback: CallbackQuery):
         user["deposits"] += amount
         del PENDING_INVOICES[invoice_id]
         
-        await callback.message.edit_text(f"<b>✅ Платеж подтвержден! Баланс пополнен на {amount} $.</b>", parse_mode="HTML")
+        await callback.message.edit_text(f"✅ <b>Платеж подтвержден! Баланс пополнен на</b> {amount} $.", parse_mode="HTML")
         await callback.answer()
     else:
         await callback.answer("Счет еще не оплачен.", show_alert=True)
@@ -309,7 +309,7 @@ async def handle_webhook(request):
         if user_id in USERS_DB:
             USERS_DB[user_id]["balance"] += amount
             USERS_DB[user_id]["deposits"] += amount
-            await bot.send_message(user_id, f"<b>✅ Платеж подтвержден! +{amount} $</b>", parse_mode="HTML")
+            await bot.send_message(user_id, f"✅ <b>Платеж подтвержден! +</b>{amount} $", parse_mode="HTML")
     return web.Response(status=200)
 
 @dp.callback_query(F.data.in_({"withdraw_select_balance", "withdraw_select_profile"}))
@@ -360,7 +360,7 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
     user = get_or_create_user(message.from_user.id, message.from_user.full_name)
     
     if user["balance"] < amount:
-        await message.answer("<b>❌ Недостаточно средств на балансе.</b>", parse_mode="HTML")
+        await message.answer("❌ <b>Недостаточно средств на балансе.</b>", parse_mode="HTML")
         await state.clear()
         return
 
@@ -370,7 +370,7 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
     req_id = random.randint(10000, 99999)
     WITHDRAW_REQUESTS[req_id] = {"user_id": message.from_user.id, "amount": amount, "method": method, "status": "pending"}
     
-    await message.answer(f"<b>✅ Заявка #{req_id} создана и отправлена на проверку администратору.</b>", parse_mode="HTML")
+    await message.answer(f"✅ <b>Заявка #{req_id} создана и отправлена на проверку администратору.</b>", parse_mode="HTML")
     await state.clear()
     
     for admin_id in ADMIN_IDS:
@@ -379,7 +379,7 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
                 [InlineKeyboardButton(text="Одобрить", callback_data=f"admin_approve_req_{req_id}")],
                 [InlineKeyboardButton(text="Отклонить", callback_data=f"admin_reject_req_{req_id}")]
             ])
-            await bot.send_message(admin_id, f"<b>🚨 Заявка #{req_id}\nОт: {message.from_user.id}\nСумма: {amount} $\nСпособ: {method}</b>", reply_markup=kb, parse_mode="HTML")
+            await bot.send_message(admin_id, f"🚨 <b>Заявка #{req_id}</b>\n<b>От:</b> {message.from_user.id}\n<b>Сумма:</b> {amount} $\n<b>Способ:</b> {method}", reply_markup=kb, parse_mode="HTML")
         except Exception: pass
 
 @dp.message(Command("admin"))
@@ -391,7 +391,7 @@ async def admin_panel(message: Message):
         [InlineKeyboardButton(text="Рассылка", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="Статистика", callback_data="admin_stats")]
     ])
-    await message.answer("<b>🔧 Админ-панель:</b>", reply_markup=kb, parse_mode="HTML")
+    await message.answer("🔧 <b>Админ-панель:</b>", reply_markup=kb, parse_mode="HTML")
 
 @dp.callback_query(F.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
@@ -399,7 +399,7 @@ async def admin_stats(callback: CallbackQuery):
     total_users = len(USERS_DB)
     total_deps = sum(u["deposits"] for u in USERS_DB.values())
     total_wds = sum(u["withdrawals"] for u in USERS_DB.values())
-    await callback.message.answer(f"<b>📊 Статистика:\nПользователей: {total_users}\nВсего пополнений: {total_deps} $\nВсего выводов: {total_wds} $</b>", parse_mode="HTML")
+    await callback.message.answer(f"📊 <b>Статистика:</b>\n<b>Пользователей:</b> {total_users}\n<b>Всего пополнений:</b> {total_deps} $\n<b>Всего выводов:</b> {total_wds} $", parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data == "admin_broadcast")
@@ -418,7 +418,7 @@ async def process_broadcast(message: Message, state: FSMContext):
             count += 1
             await asyncio.sleep(0.05)
         except Exception: pass
-    await message.answer(f"<b>✅ Рассылка завершена. Отправлено: {count} пользователям.</b>", parse_mode="HTML")
+    await message.answer(f"✅ <b>Рассылка завершена. Отправлено:</b> {count} <b>пользователям.</b>", parse_mode="HTML")
     await state.clear()
 
 @dp.callback_query(F.data == "admin_deduct_bal")
@@ -444,8 +444,8 @@ async def process_deduct_amount(message: Message, state: FSMContext):
     user_id = data.get("deduct_user_id")
     if user_id in USERS_DB:
         USERS_DB[user_id]["balance"] -= amount
-        await message.answer(f"<b>✅ Списано {amount} $ у {user_id}.</b>", parse_mode="HTML")
-    else: await message.answer("<b>❌ Пользователь не найден.</b>", parse_mode="HTML")
+        await message.answer(f"✅ <b>Списано</b> {amount} $ <b>у</b> {user_id}.", parse_mode="HTML")
+    else: await message.answer("❌ <b>Пользователь не найден.</b>", parse_mode="HTML")
     await state.clear()
 
 @dp.callback_query(F.data == "admin_withdraw_requests")
@@ -456,7 +456,7 @@ async def admin_show_requests(callback: CallbackQuery):
     for req_id in pending_reqs:
         req = WITHDRAW_REQUESTS[req_id]
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Одобрить", callback_data=f"admin_approve_req_{req_id}")], [InlineKeyboardButton(text="Отклонить", callback_data=f"admin_reject_req_{req_id}")]])
-        await callback.message.answer(f"<b>🚨 Заявка #{req_id}\nСумма: {req['amount']} $\nСпособ: {req['method']}\nID: {req['user_id']}</b>", reply_markup=kb, parse_mode="HTML")
+        await callback.message.answer(f"🚨 <b>Заявка #{req_id}</b>\n<b>Сумма:</b> {req['amount']} $\n<b>Способ:</b> {req['method']}\n<b>ID:</b> {req['user_id']}", reply_markup=kb, parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_approve_req_"))
@@ -473,7 +473,7 @@ async def admin_approve_req_inline(callback: CallbackQuery):
     success = False
     error_text = ""
     
-    await callback.message.edit_text(f"<b>⏳ Выполняю перевод по заявке #{req_id} через API...</b>", parse_mode="HTML")
+    await callback.message.edit_text(f"⏳ <b>Выполняю перевод по заявке #{req_id} через API...</b>", parse_mode="HTML")
     
     try:
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
@@ -504,11 +504,11 @@ async def admin_approve_req_inline(callback: CallbackQuery):
     if success:
         req["status"] = "approved"
         USERS_DB[target_user_id]["withdrawals"] += amount
-        await bot.send_message(target_user_id, f"<b>✅ Ваш вывод на сумму {amount} $ успешно зачислен на ваш кошелек!</b>", parse_mode="HTML")
-        await callback.message.edit_text(f"<b>✅ Заявка #{req_id} одобрена, средства переведены по API.</b>", parse_mode="HTML")
+        await bot.send_message(target_user_id, f"✅ <b>Ваш вывод на сумму</b> {amount} $ <b>успешно зачислен на ваш кошелек!</b>", parse_mode="HTML")
+        await callback.message.edit_text(f"✅ <b>Заявка #{req_id} одобрена, средства переведены по API.</b>", parse_mode="HTML")
     else:
         err_escaped = html.escape(error_text)
-        await callback.message.edit_text(f"<b>❌ Ошибка API при переводе (#{req_id}).\nЛог: <code>{err_escaped}</code></b>", parse_mode="HTML")
+        await callback.message.edit_text(f"❌ <b>Ошибка API при переводе (#{req_id}).\nЛог:</b> <code>{err_escaped}</code>", parse_mode="HTML")
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("admin_reject_req_"))
@@ -520,8 +520,8 @@ async def admin_reject_req_inline(callback: CallbackQuery):
     req = WITHDRAW_REQUESTS[req_id]
     req["status"] = "rejected"
     USERS_DB[req["user_id"]]["balance"] += req["amount"]
-    await bot.send_message(req["user_id"], f"<b>❌ Вывод {req['amount']} $ отклонен, средства возвращены на баланс.</b>", parse_mode="HTML")
-    await callback.message.edit_text(f"<b>❌ Заявка #{req_id} ОТКЛОНЕНА</b>", parse_mode="HTML")
+    await bot.send_message(req["user_id"], f"❌ <b>Вывод</b> {req['amount']} $ <b>отклонен, средства возвращены на баланс.</b>", parse_mode="HTML")
+    await callback.message.edit_text(f"❌ <b>Заявка #{req_id} ОТКЛОНЕНА</b>", parse_mode="HTML")
     await callback.answer()
 
 async def start_web_server():
