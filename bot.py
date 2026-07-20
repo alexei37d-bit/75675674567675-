@@ -34,7 +34,6 @@ USERS_DB = {}
 WITHDRAW_REQUESTS = {}
 PENDING_INVOICES = {}
 
-# Универсальный User-Agent для обхода базовых блокировок Cloudflare
 DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
 
 def get_or_create_user(user_id: int, full_name: str) -> dict:
@@ -64,14 +63,14 @@ class AdminStates(StatesGroup):
 WELCOME_TEXT = ('<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>')
 
 DEPOSIT_METHODS_TEXT = (
-    '<tg-emoji emoji-id="5361914370068613491">💎</tg-emoji> <b>CryptoBot</b>\n'
-    '<tg-emoji emoji-id="5415897719522744378">🚀</tg-emoji> <b>Xrocket</b>\n\n'
+    '<b>CryptoBot</b>\n'
+    '<b>Xrocket</b>\n\n'
     'Выберите способ пополнения:'
 )
 
 WITHDRAW_METHODS_TEXT = (
-    '<tg-emoji emoji-id="5361914370068613491">💎</tg-emoji> <b>CryptoBot</b>\n'
-    '<tg-emoji emoji-id="5415897719522744378">🚀</tg-emoji> <b>Xrocket</b>\n\n'
+    '<b>CryptoBot</b>\n'
+    '<b>Xrocket</b>\n\n'
     'Выберите способ вывода:'
 )
 
@@ -193,7 +192,6 @@ async def process_deposit_amount(message: Message, state: FSMContext):
     invoice_id = ""
     
     try:
-        # Отключаем проверку SSL (ssl=False) для обхода ошибки 443
         async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as session:
             if method == "crypto":
                 headers = {
@@ -214,12 +212,12 @@ async def process_deposit_amount(message: Message, state: FSMContext):
 
             else:
                 headers = {
-                    "Rocket-Pay-Key": XROCKET_TOKEN, 
+                    "Api-Key": XROCKET_TOKEN, 
                     "Content-Type": "application/json",
                     "User-Agent": DEFAULT_USER_AGENT
                 }
-                payload = {"amount": amount, "currency": "USDT"}
-                async with session.post("https://pay.ton-rocket.com/tg-invoices", headers=headers, json=payload) as resp:
+                payload = {"amount": amount, "currency": "USDT", "description": "Deposit"}
+                async with session.post("https://pay.ton-rocket.com/api/v1/tg-invoice/create", headers=headers, json=payload) as resp:
                     if resp.status == 200:
                         resp_data = await resp.json()
                         if resp_data.get("success"):
@@ -269,10 +267,10 @@ async def check_payment_handler(callback: CallbackQuery):
                                 is_paid = True
             else:
                 headers = {
-                    "Rocket-Pay-Key": XROCKET_TOKEN,
+                    "Api-Key": XROCKET_TOKEN,
                     "User-Agent": DEFAULT_USER_AGENT
                 }
-                async with session.get(f"https://pay.ton-rocket.com/tg-invoices/{invoice_id}", headers=headers) as resp:
+                async with session.get(f"https://pay.ton-rocket.com/api/v1/tg-invoice/{invoice_id}", headers=headers) as resp:
                     if resp.status == 200:
                         resp_data = await resp.json()
                         if resp_data.get("success"):
@@ -294,7 +292,6 @@ async def check_payment_handler(callback: CallbackQuery):
     else:
         await callback.answer("Счет еще не оплачен.", show_alert=True)
 
-# ВЕБХУК ДЛЯ ПЛАТЕЖЕК 
 async def handle_webhook(request):
     data = await request.json()
     if data.get("status") == "paid":
@@ -480,7 +477,7 @@ async def admin_approve_req_inline(callback: CallbackQuery):
 
             else:
                 headers = {
-                    "Rocket-Pay-Key": XROCKET_TOKEN, 
+                    "Api-Key": XROCKET_TOKEN, 
                     "Content-Type": "application/json",
                     "User-Agent": DEFAULT_USER_AGENT
                 }
@@ -490,7 +487,7 @@ async def admin_approve_req_inline(callback: CallbackQuery):
                     "amount": amount,
                     "transferId": str(uuid.uuid4())
                 }
-                async with session.post("https://pay.ton-rocket.com/app/transfer", headers=headers, json=payload) as resp:
+                async with session.post("https://pay.ton-rocket.com/api/v1/app/transfer", headers=headers, json=payload) as resp:
                     if resp.status == 200:
                         resp_data = await resp.json()
                         if resp_data.get("success"):
