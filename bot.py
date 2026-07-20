@@ -63,12 +63,10 @@ class AdminStates(StatesGroup):
 WELCOME_TEXT = ('<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>')
 
 DEPOSIT_METHODS_TEXT = (
- 
     'Выберите способ пополнения:'
 )
 
 WITHDRAW_METHODS_TEXT = (
-    
     'Выберите способ вывода:'
 )
 
