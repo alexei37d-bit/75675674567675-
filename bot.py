@@ -59,8 +59,6 @@ class AdminStates(StatesGroup):
     waiting_for_deduct_id = State()
     waiting_for_deduct_amount = State()
 
-WELCOME_TEXT = ('<b> <tg-emoji emoji-id=\"5451985838630014131\">💎</tg-emoji> Добро пожаловать в @dfnshfhsdnfksdbot</b>')
-
 DEPOSIT_METHODS_TEXT = (
     'Выберите способ пополнения:'
 )
@@ -73,7 +71,7 @@ def reply_main_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [[KeyboardButton(text="Баланс"), KeyboardButton(text="Играть"), KeyboardButton(text="Меню")]]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
-def main_keyboard() -> InlineKeyboardMarkup:
+def main_keyboard(bot_username: str) -> InlineKeyboardMarkup:
     raw_inline_keyboard = [
         [
             {"text": "Играть", "callback_data": "play", "icon_custom_emoji_id": "5471895876790161593"},
@@ -88,12 +86,12 @@ def main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
 
 def balance_keyboard() -> InlineKeyboardMarkup:
+    # Кнопка назад убрана, остались только Пополнить и Вывести
     raw_inline_keyboard = [
         [
             {"text": "Пополнить", "callback_data": "deposit_select", "icon_custom_emoji_id": "5206401524200145033"}, 
             {"text": "Вывести", "callback_data": "withdraw_select", "icon_custom_emoji_id": "5206510891247371052"}
-        ],
-        [{"text": "< Назад", "callback_data": "back_to_main"}]
+        ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
 
@@ -133,8 +131,11 @@ def get_profile_message(user: dict) -> str:
 @dp.message(CommandStart())
 async def start_handler(message: Message):
     get_or_create_user(message.from_user.id, message.from_user.full_name)
-    await message.answer(WELCOME_TEXT, parse_mode="HTML", reply_markup=reply_main_keyboard())
-    await message.answer('<tg-emoji emoji-id="5445221832074483553">🏠</tg-emoji> Главное меню проекта:', parse_mode="HTML", reply_markup=main_keyboard())
+    bot_info = await bot.get_me()
+    welcome_text = f'<b><tg-emoji emoji-id="5451985838630014131">💎</tg-emoji> Добро пожаловать в @{bot_info.username}</b>'
+    
+    await message.answer(welcome_text, parse_mode="HTML", reply_markup=reply_main_keyboard())
+    await message.answer('<tg-emoji emoji-id="5445221832074483553">🏠</tg-emoji> Главное меню проекта:', parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
 
 @dp.message(F.text == "Баланс")
 async def reply_balance_handler(message: Message):
@@ -144,7 +145,9 @@ async def reply_balance_handler(message: Message):
 @dp.message(F.text == "Меню")
 async def reply_menu_handler(message: Message):
     get_or_create_user(message.from_user.id, message.from_user.full_name)
-    await message.answer(WELCOME_TEXT, parse_mode="HTML", reply_markup=main_keyboard())
+    bot_info = await bot.get_me()
+    welcome_text = f'<b><tg-emoji emoji-id="5451985838630014131">💎</tg-emoji> Добро пожаловать в @{bot_info.username}</b>'
+    await message.answer(welcome_text, parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
 
 @dp.message(F.text == "Играть")
 async def reply_play_handler(message: Message):
@@ -152,11 +155,12 @@ async def reply_play_handler(message: Message):
 
 @dp.callback_query(F.data == "help")
 async def help_handler(callback: CallbackQuery):
-    help_text = "Важно!
-
-— Вопросы по выводу/пополнению — в Техподдержку.
-— Технические сбои и ошибки — в Техподдержку.
-— Предложения и пожелания по работе казино — тоже в Техподдержку."
+    help_text = (
+        "Важно!\n\n"
+        "— Вопросы по выводу/пополнению — в Техподдержку.\n"
+        "— Технические сбои и ошибки — в Техподдержку.\n"
+        "— Предложения и пожелания по работе казино — тоже в Техподдержку."
+    )
     await callback.message.edit_text(text=help_text, reply_markup=help_keyboard(), parse_mode="HTML")
     await callback.answer()
 
@@ -168,7 +172,9 @@ async def profile_handler(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "back_to_main")
 async def back_to_main_handler(callback: CallbackQuery):
-    await callback.message.edit_text(text=WELCOME_TEXT, parse_mode="HTML", reply_markup=main_keyboard())
+    bot_info = await bot.get_me()
+    welcome_text = f'<b><tg-emoji emoji-id="5451985838630014131">💎</tg-emoji> Добро пожаловать в @{bot_info.username}</b>'
+    await callback.message.edit_text(text=welcome_text, parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
     await callback.answer()
 
 @dp.callback_query(F.data == "deposit_select")
