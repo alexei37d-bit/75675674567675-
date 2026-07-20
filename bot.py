@@ -77,7 +77,7 @@ def main_keyboard(bot_username: str) -> InlineKeyboardMarkup:
             {"text": "Играть", "callback_data": "play", "icon_custom_emoji_id": "5471895876790161593"},
             {"text": "Чат", "callback_data": "chat", "icon_custom_emoji_id": "5235931189591710436"},
         ],
-        [{"text": "Профиль", "callback_data": "profile", "icon_custom_emoji_id": "5471962934114556825"}],
+        [{"text": "Профиль", "callback_data": "profile", "icon_custom_emoji_id": "5197514090108456970"}],
         [
            {"text": "Правила", "url": "https://telegra.ph/Pravila-WXS-game-07-13", "icon_custom_emoji_id": "5296369303661067030"},
            {"text": "Помощь", "callback_data": "help", "icon_custom_emoji_id": "5197269100878907942"},
@@ -86,7 +86,6 @@ def main_keyboard(bot_username: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
 
 def balance_keyboard() -> InlineKeyboardMarkup:
-    # Кнопка назад убрана, остались только Пополнить и Вывести
     raw_inline_keyboard = [
         [
             {"text": "Пополнить", "callback_data": "deposit_select", "icon_custom_emoji_id": "5206401524200145033"}, 
@@ -156,12 +155,11 @@ async def reply_play_handler(message: Message):
 
 @dp.callback_query(F.data == "help")
 async def help_handler(callback: CallbackQuery):
-    # Ошибка исправлена: использованы правильные тройные кавычки для многострочного текста
     help_text = (
-        "Важно!\n\n"
-        "— Вопросы по выводу/пополнению — в Техподдержку.\n"
-        "— Технические сбои и ошибки — в Техподдержку.\n"
-        "— Предложения и пожелания по работе казино — тоже в Техподдержку."
+        '<tg-emoji emoji-id="5472290451140679692">⚠️</tg-emoji> <b>Важно!</b>\n\n'
+        '<b>— Вопросы по выводу/пополнению — в Техподдержку.</b>\n'
+        '<b>— Технические сбои и ошибки — в Техподдержку.</b>\n'
+        '<b>— Предложения и пожелания по работе казино — тоже в Техподдержку.</b>'
     )
     await callback.message.edit_text(text=help_text, reply_markup=help_keyboard(), parse_mode="HTML")
     await callback.answer()
@@ -179,11 +177,17 @@ async def back_to_main_handler(callback: CallbackQuery):
     await callback.message.edit_text(text=menu_text, parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
     await callback.answer()
 
+@dp.callback_query(F.data == "back_to_balance")
+async def back_to_balance_handler(callback: CallbackQuery):
+    user = get_or_create_user(callback.from_user.id, callback.from_user.full_name)
+    await callback.message.edit_text(text=f'<tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> Баланс : {user["balance"]:.2f} $', parse_mode="HTML", reply_markup=balance_keyboard())
+    await callback.answer()
+
 @dp.callback_query(F.data == "deposit_select")
 async def select_deposit_method(callback: CallbackQuery):
     raw_inline_keyboard = [
         [{"text": "CryptoBot", "callback_data": "dep_method_crypto", "icon_custom_emoji_id": "5361914370068613491"}],
-        [{"text": "< Назад", "callback_data": "back_to_main"}]
+        [{"text": "< Назад", "callback_data": "back_to_balance"}]
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
     await callback.message.edit_text(DEPOSIT_METHODS_TEXT, reply_markup=kb, parse_mode="HTML")
@@ -193,7 +197,10 @@ async def select_deposit_method(callback: CallbackQuery):
 async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     method = callback.data.split("_")[-1]
     await state.update_data(deposit_method=method)
-    await callback.message.answer("Введите сумму пополнения в USDT (от 0.1 $):")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [{"text": "< Назад", "callback_data": "deposit_select"}]
+    ])
+    await callback.message.edit_text("Введите сумму пополнения в USDT (от 0.1 $):", reply_markup=kb, parse_mode="HTML")
     await state.set_state(PaymentStates.waiting_for_deposit_amount)
     await callback.answer()
 
@@ -202,10 +209,12 @@ async def process_deposit_amount(message: Message, state: FSMContext):
     try:
         amount = float(message.text.replace(",", "."))
         if amount < 0.1:
-            await message.answer("Сумма пополнения должна быть от 0.1 $")
+            kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": "deposit_select"}]])
+            await message.answer("Сумма пополнения должна быть от 0.1 $", reply_markup=kb)
             return
     except ValueError:
-        await message.answer("Пожалуйста, введите корректное число.")
+        kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": "deposit_select"}]])
+        await message.answer("Пожалуйста, введите корректное число.", reply_markup=kb)
         return
 
     data = await state.get_data()
@@ -299,7 +308,7 @@ async def handle_webhook(request):
 async def select_withdraw_method(callback: CallbackQuery):
     raw_inline_keyboard = [
         [{"text": "CryptoBot", "callback_data": "wd_method_crypto", "icon_custom_emoji_id": "5361914370068613491"}],
-        [{"text": "< Назад", "callback_data": "back_to_main"}]
+        [{"text": "< Назад", "callback_data": "back_to_balance"}]
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
     await callback.message.edit_text(WITHDRAW_METHODS_TEXT, reply_markup=kb, parse_mode="HTML")
@@ -309,7 +318,10 @@ async def select_withdraw_method(callback: CallbackQuery):
 async def process_withdraw_method(callback: CallbackQuery, state: FSMContext):
     method = callback.data.split("_")[-1]
     await state.update_data(withdraw_method=method)
-    await callback.message.answer("Введите сумму вывода (от 1.1 $):")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [{"text": "< Назад", "callback_data": "withdraw_select"}]
+    ])
+    await callback.message.edit_text("Введите сумму вывода (от 1.1 $):", reply_markup=kb, parse_mode="HTML")
     await state.set_state(PaymentStates.waiting_for_withdraw_amount)
     await callback.answer()
 
@@ -318,10 +330,12 @@ async def process_withdraw_amount(message: Message, state: FSMContext):
     try:
         amount = float(message.text.replace(",", "."))
         if amount < 1.1:
-            await message.answer("Сумма вывода должна быть от 1.1 $")
+            kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": "withdraw_select"}]])
+            await message.answer("Сумма вывода должна быть от 1.1 $", reply_markup=kb)
             return
     except ValueError:
-        await message.answer("Пожалуйста, введите корректное число.")
+        kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": "withdraw_select"}]])
+        await message.answer("Пожалуйста, введите корректное число.", reply_markup=kb)
         return
 
     user = get_or_create_user(message.from_user.id, message.from_user.full_name)
