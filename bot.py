@@ -98,10 +98,7 @@ def get_main_keyboard():
 
 def get_profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="💸 Вывод", callback_data="withdraw"),
-            InlineKeyboardButton(text=" ", callback_data="none")  # Пустая кнопка без действия
-        ],
+        [InlineKeyboardButton(text="💸 Вывод", callback_data="withdraw")],
         [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
     ])
 
@@ -139,7 +136,7 @@ async def show_profile(call: CallbackQuery):
 
     profile_text = (
         "<b>👤 Профиль</b>\n\n"
-        f"<b>🎮 Имя игрока: {user_name}</b>\n"
+        f"<b>🎮 Имя : {user_name}</b>\n"
         f"<b>📨 Всего сообщений отправлено: {msg_count}</b>\n"
         f"<b>💰 Баланс: {balance:.6f} USDT</b>"
     )
@@ -157,11 +154,6 @@ async def show_chats(call: CallbackQuery):
 @dp.callback_query(F.data == "withdraw")
 async def handle_withdraw(call: CallbackQuery):
     await call.answer("⚠️ Вывод средств пока временно недоступен.", show_alert=True)
-
-
-@dp.callback_query(F.data == "none")
-async def handle_none(call: CallbackQuery):
-    await call.answer()
 
 
 # -------------------------------------------------------------
