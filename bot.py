@@ -1,545 +1,206 @@
 import asyncio
 import logging
-import aiohttp
-from aiohttp import web
-from datetime import datetime
-import random
-import uuid
-import html
+import sqlite3
+import time
+from aiogram import Bot, Dispatcher, F, types
+from aiogram.enums import ParseMode
+from aiogram.filters import CommandStart
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
 
-from aiogram import Bot, Dispatcher, F
-from aiogram.filters import CommandStart, Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (
-    Message, 
-    CallbackQuery, 
-    InlineKeyboardMarkup, 
-    ReplyKeyboardMarkup, 
-    KeyboardButton,
-    InlineKeyboardButton
-)
+# -------------------------------------------------------------
+# НАСТРОЙКИ
+# -------------------------------------------------------------
+TOKEN = "8831174244:AAHL_uTfgQEA4zaPsp3UkhHjv5ePb2rn8xE"  # Вставь сюда токен от @BotFather
 
-BOT_TOKEN = "8804355629:AAH6auh84fLdBhSfQkI_dKBnY9QTa-XXm_k"
-CRYPTO_BOT_TOKEN = "611566:AAtSWGwJ3QTFtDPqTVNmvHxi6niSqwCn3eP"
+# Обязательный текст, который должен быть в Био пользователя
+REQUIRED_BIO = "@Sparta_cash — место где зарабатывают деньги!"
 
-ADMIN_IDS = [6130985988, 7921743592]
+# Награда за 1 сообщение
+REWARD_PER_MESSAGE = 0.00024
 
-logging.basicConfig(level=logging.INFO)
-
-bot = Bot(token=BOT_TOKEN)
+# Инициализация бота и диспетчера
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-USERS_DB = {}
-WITHDRAW_REQUESTS = {}
-PENDING_INVOICES = {}
+# Кэш для отслеживания задержки (5 секунд) отправки сообщений пользователями
+user_cooldowns = {}
 
-DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
 
-def get_or_create_user(user_id: int, full_name: str) -> dict:
-    if user_id not in USERS_DB:
-        USERS_DB[user_id] = {
-            "name": html.escape(full_name),
-            "id": user_id,
-            "reg_date": datetime.now().strftime("%d.%m.%Y %H:%M"),
-            "balance": 0.0,
-            "turnover": 0.0,
-            "deposits": 0.0,
-            "withdrawals": 0.0,
-        }
-    return USERS_DB[user_id]
+# -------------------------------------------------------------
+# БАЗА ДАННЫХ (SQLite)
+# -------------------------------------------------------------
+def init_db():
+    conn = sqlite3.connect("sparta_cash.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            messages_count INTEGER DEFAULT 0,
+            balance REAL DEFAULT 0.0
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-class PaymentStates(StatesGroup):
-    waiting_for_deposit_amount = State() 
-    waiting_for_withdraw_amount = State()  
-    waiting_for_withdraw_wallet = State()  
-    
-class AdminStates(StatesGroup):
-    waiting_for_approve_link = State()
-    waiting_for_broadcast = State()
-    waiting_for_deduct_id = State()
-    waiting_for_deduct_amount = State()
+def get_user(user_id: int):
+    conn = sqlite3.connect("sparta_cash.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT messages_count, balance FROM users WHERE user_id = ?", (user_id,))
+    user = cursor.fetchone()
+    if not user:
+        cursor.execute("INSERT INTO users (user_id, messages_count, balance) VALUES (?, 0, 0.0)", (user_id,))
+        conn.commit()
+        user = (0, 0.0)
+    conn.close()
+    return user
 
-DEPOSIT_METHODS_TEXT = "Выберите способ пополнения:"
-WITHDRAW_METHODS_TEXT = "Выберите способ вывода:"
+def add_message_reward(user_id: int):
+    conn = sqlite3.connect("sparta_cash.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE users 
+        SET messages_count = messages_count + 1, 
+            balance = balance + ? 
+        WHERE user_id = ?
+    """, (REWARD_PER_MESSAGE, user_id))
+    conn.commit()
+    conn.close()
 
-def reply_main_keyboard() -> ReplyKeyboardMarkup:
-    keyboard = [[KeyboardButton(text="Баланс"), KeyboardButton(text="Играть"), KeyboardButton(text="Меню")]]
-    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
-def main_keyboard(bot_username: str) -> InlineKeyboardMarkup:
-    raw_inline_keyboard = [
+# -------------------------------------------------------------
+# ТЕКСТЫ И КЛАВИАТУРЫ
+# -------------------------------------------------------------
+START_TEXT = (
+    "<b>👋 Добро пожаловать в Sparta Cash!</b>\n"
+    "<b>💸 Зарабатывай кэш просто общаясь у нас в чате!</b>\n"
+    "<b>🎯 Как участвовать:</b>\n"
+    "<b>1️⃣ Добавь в био: @Sparta_cash — место где зарабатывают деньги!</b>\n"
+    "<b>2️⃣ Общайся в чатах из нашего списка</b>\n"
+    "<b>3️⃣  Награда — 0,24$ за 1000 сообщений 🥰</b>\n"
+    "<b>💰 Выплаты осуществляются мгновенно на @send</b>\n"
+    "<b>🔓 Вывод — от 0.10$</b>\n"
+    "<b>⚠️ Важно :</b>\n"
+    "<b>Допустима только приписка @Sparta_cash</b>\n"
+    "<b>🏆 Оплата за 1 сообщение - 0.00024$</b>"
+)
+
+CHATS_TEXT = (
+    "<b>Вот список всех доступных чатов для общения :</b>\n\n"
+    "<b>🔥 Чат Sparta - 0.00024$</b>\n\n"
+    "<b>Сообщения засчитываются раз в 5 секунд !</b>"
+)
+
+def get_main_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎮 Профиль", callback_data="profile")],
+        [InlineKeyboardButton(text="💬 Чаты", callback_data="chats")]
+    ])
+
+def get_profile_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
         [
-            {"text": "Играть", "callback_data": "play"},
-            {"text": "Чат", "callback_data": "chat"},
+            InlineKeyboardButton(text="💸 Вывод", callback_data="withdraw"),
+            InlineKeyboardButton(text=" ", callback_data="none")  # Пустая кнопка без действия
         ],
-        [{"text": "Профиль", "callback_data": "profile"}],
-        [
-           {"text": "Правила", "url": "https://telegra.ph/Pravila-WXS-game-07-13"},
-           {"text": "Помощь", "callback_data": "help"},
-        ],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
+        [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
+    ])
 
-def balance_keyboard() -> InlineKeyboardMarkup:
-    raw_inline_keyboard = [
-        [
-            {"text": "Пополнить", "callback_data": "deposit_select_balance"}, 
-            {"text": "Вывести", "callback_data": "withdraw_select_balance"}
-        ]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
+def get_chats_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
+    ])
 
-def profile_keyboard() -> InlineKeyboardMarkup:
-    raw_inline_keyboard = [
-        [
-            {"text": "Пополнить", "callback_data": "deposit_select_profile"}, 
-            {"text": "Вывести", "callback_data": "withdraw_select_profile"}
-        ],
-        [{"text": "Транзакции", "callback_data": "transactions"}],
-        [{"text": "Настройки", "callback_data": "settings"}],
-        [{"text": "< Назад", "callback_data": "back_to_main"}]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
 
-def help_keyboard() -> InlineKeyboardMarkup:
-    raw_inline_keyboard = [
-        [
-            {"text": "Тех. поддержка", "url": "https://t.me/jei1a"}
-        ],
-        [
-            {"text": "< Назад", "callback_data": "back_to_main"}
-        ]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
+# -------------------------------------------------------------
+# ХЕНДЛЕРЫ ЛИЧНЫХ СООБЩЕНИЙ
+# -------------------------------------------------------------
+@dp.message(CommandStart(), F.chat.type == "private")
+async def cmd_start(message: Message):
+    # Удаляем сообщение с командой /start от пользователя
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
-def get_profile_message(user: dict) -> str:
-    return (
-        f"👤 Имя: {user['name']}\n"
-        f"ℹ️ Ваш ID: <code>{user['id']}</code>\n"
-        f"🕓 Регистрация: {user['reg_date']}\n\n"
-        f"👝 Оборот: {user['turnover']:.2f} $\n\n"
-        f"🔼 Пополнений: {user['deposits']:.2f} $\n"
-        f"🔽 Выводов: {user['withdrawals']:.2f} $"
-    )
+    # Отправляем приветственное сообщение
+    await message.answer(START_TEXT, parse_mode=ParseMode.HTML, reply_markup=get_main_keyboard())
 
-@dp.message(CommandStart())
-async def start_handler(message: Message):
-    get_or_create_user(message.from_user.id, message.from_user.full_name)
-    bot_info = await bot.get_me()
-    welcome_text = f'💎 Добро пожаловать в @{bot_info.username}'
-    
-    await message.answer(welcome_text, parse_mode="HTML", reply_markup=reply_main_keyboard())
-    await message.answer('🏠 Главное меню проекта:', parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
 
-@dp.message(F.text == "Баланс")
-async def reply_balance_handler(message: Message):
-    user = get_or_create_user(message.from_user.id, message.from_user.full_name)
-    await message.answer(text=f'💵 Баланс : {user["balance"]:.2f} $', parse_mode="HTML", reply_markup=balance_keyboard())
+@dp.callback_query(F.data == "main_menu")
+async def back_to_main_menu(call: CallbackQuery):
+    await call.message.edit_text(START_TEXT, parse_mode=ParseMode.HTML, reply_markup=get_main_keyboard())
+    await call.answer()
 
-@dp.message(F.text == "Меню")
-async def reply_menu_handler(message: Message):
-    get_or_create_user(message.from_user.id, message.from_user.full_name)
-    bot_info = await bot.get_me()
-    welcome_text = f'💎 Добро пожаловать в @{bot_info.username}'
-    await message.answer(welcome_text, parse_mode="HTML", reply_markup=reply_main_keyboard())
-    await message.answer('🏠 Главное меню проекта:', parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
-
-@dp.message(F.text == "Играть")
-async def reply_play_handler(message: Message):
-    await message.answer("🎰 Раздел с играми находится в разработке!", parse_mode="HTML")
-
-@dp.callback_query(F.data == "help")
-async def help_handler(callback: CallbackQuery):
-    help_text = (
-        '⚠️ Важно!\n\n'
-        '— Вопросы по выводу/пополнению — в Техподдержку.\n'
-        '— Технические сбои и ошибки — в Техподдержку.\n'
-        '— Предложения и пожелания по работе казино — тоже в Техподдержку.'
-    )
-    await callback.message.edit_text(text=help_text, reply_markup=help_keyboard(), parse_mode="HTML")
-    await callback.answer()
 
 @dp.callback_query(F.data == "profile")
-async def profile_handler(callback: CallbackQuery):
-    user = get_or_create_user(callback.from_user.id, callback.from_user.full_name)
-    await callback.message.edit_text(text=get_profile_message(user), parse_mode="HTML", reply_markup=profile_keyboard())
-    await callback.answer()
+async def show_profile(call: CallbackQuery):
+    msg_count, balance = get_user(call.from_user.id)
+    user_name = call.from_user.full_name
 
-@dp.callback_query(F.data == "back_to_main")
-async def back_to_main_handler(callback: CallbackQuery):
-    bot_info = await bot.get_me()
-    menu_text = '🏠 Главное меню проекта:'
-    await callback.message.edit_text(text=menu_text, parse_mode="HTML", reply_markup=main_keyboard(bot_info.username))
-    await callback.answer()
+    profile_text = (
+        "<b>👤 Профиль</b>\n\n"
+        f"<b>🎮 Имя игрока: {user_name}</b>\n"
+        f"<b>📨 Всего сообщений отправлено: {msg_count}</b>\n"
+        f"<b>💰 Баланс: {balance:.6f} USDT</b>"
+    )
 
-@dp.callback_query(F.data == "back_to_balance")
-async def back_to_balance_handler(callback: CallbackQuery):
-    user = get_or_create_user(callback.from_user.id, callback.from_user.full_name)
-    await callback.message.edit_text(text=f'💵 Баланс : {user["balance"]:.2f} $', parse_mode="HTML", reply_markup=balance_keyboard())
-    await callback.answer()
+    await call.message.edit_text(profile_text, parse_mode=ParseMode.HTML, reply_markup=get_profile_keyboard())
+    await call.answer()
 
-@dp.callback_query(F.data.in_({"deposit_select_balance", "deposit_select_profile"}))
-async def select_deposit_method(callback: CallbackQuery, state: FSMContext):
-    source = callback.data.split("_")[-1]
-    await state.update_data(return_to=source)
-    
-    back_cb = "back_to_balance" if source == "balance" else "profile"
-    raw_inline_keyboard = [
-        [{"text": "CryptoBot", "callback_data": "dep_method_crypto"}],
-        [{"text": "< Назад", "callback_data": back_cb}]
-    ]
-    kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
-    await callback.message.edit_text(DEPOSIT_METHODS_TEXT, reply_markup=kb, parse_mode="HTML")
-    await callback.answer()
 
-@dp.callback_query(F.data.startswith("dep_method_"))
-async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
-    method = callback.data.split("_")[-1]
-    await state.update_data(deposit_method=method)
-    
-    data = await state.get_data()
-    back_cb = "back_to_balance" if data.get("return_to") == "balance" else "profile"
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [{"text": "< Назад", "callback_data": back_cb}]
-    ])
-    await callback.message.edit_text("Введите сумму пополнения в USDT (от 0.1 $):", reply_markup=kb, parse_mode="HTML")
-    await state.set_state(PaymentStates.waiting_for_deposit_amount)
-    await callback.answer()
+@dp.callback_query(F.data == "chats")
+async def show_chats(call: CallbackQuery):
+    await call.message.edit_text(CHATS_TEXT, parse_mode=ParseMode.HTML, reply_markup=get_chats_keyboard())
+    await call.answer()
 
-@dp.message(PaymentStates.waiting_for_deposit_amount)
-async def process_deposit_amount(message: Message, state: FSMContext):
-    data = await state.get_data()
-    back_cb = "back_to_balance" if data.get("return_to") == "balance" else "profile"
 
-    try:
-        amount = float(message.text.replace(",", "."))
-        if amount < 0.1:
-            kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": back_cb}]])
-            await message.answer("Сумма пополнения должна быть от 0.1 $", reply_markup=kb, parse_mode="HTML")
-            return
-    except ValueError:
-        kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": back_cb}]])
-        await message.answer("Пожалуйста, введите корректное число.", reply_markup=kb, parse_mode="HTML")
+@dp.callback_query(F.data == "withdraw")
+async def handle_withdraw(call: CallbackQuery):
+    await call.answer("⚠️ Вывод средств пока временно недоступен.", show_alert=True)
+
+
+@dp.callback_query(F.data == "none")
+async def handle_none(call: CallbackQuery):
+    await call.answer()
+
+
+# -------------------------------------------------------------
+# ХЕНДЛЕР ОБРАБОТКИ СООБЩЕНИЙ В ЧАТАХ (ГРУППАХ)
+# -------------------------------------------------------------
+@dp.message(F.chat.type.in_({"group", "supergroup"}))
+async def track_group_messages(message: Message):
+    if not message.from_user or message.from_user.is_bot:
         return
 
-    method = data.get("deposit_method")
-    
-    invoice_url = ""
-    invoice_id = ""
-    
-    try:
-        timeout = aiohttp.ClientTimeout(total=15)
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False), timeout=timeout) as session:
-            if method == "crypto":
-                headers = {
-                    "Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN,
-                    "User-Agent": DEFAULT_USER_AGENT
-                }
-                payload = {"asset": "USDT", "amount": str(amount)}
-                async with session.post("https://pay.crypt.bot/api/createInvoice", headers=headers, json=payload) as resp:
-                    if resp.status == 200:
-                        resp_data = await resp.json()
-                        if resp_data.get("ok"):
-                            invoice_id = str(resp_data["result"]["invoice_id"])
-                            invoice_url = resp_data["result"]["bot_invoice_url"]
-                        else:
-                            err_msg = html.escape(str(resp_data.get('error', 'Неизвестная ошибка')))
-                            return await message.answer(f"Ошибка API CryptoBot: {err_msg}", parse_mode="HTML")
-                    else:
-                        return await message.answer(f"HTTP Ошибка CryptoBot: {resp.status}", parse_mode="HTML")
+    user_id = message.from_user.id
+    current_time = time.time()
 
-    except asyncio.TimeoutError:
-        return await message.answer("⚠️ Время ожидания ответа от платежной системы истекло. Попробуйте создать счет еще раз через пару минут.", parse_mode="HTML")
-    except Exception as e:
-        err_msg = html.escape(str(e))
-        return await message.answer(f"Ошибка соединения с платежной системой:\n{err_msg}", parse_mode="HTML")
-
-    PENDING_INVOICES[invoice_id] = {"user_id": message.from_user.id, "amount": amount, "method": method}
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Оплатить счет", url=invoice_url)],
-        [InlineKeyboardButton(text="Проверить оплату", callback_data=f"check_pay_{invoice_id}")]
-    ])
-    await message.answer(f"Оплата на сумму {amount} $\nПерейдите по ссылке. После оплаты нажмите кнопку ниже.", parse_mode="HTML", reply_markup=kb)
-    await state.clear()
-
-@dp.callback_query(F.data.startswith("check_pay_"))
-async def check_payment_handler(callback: CallbackQuery):
-    invoice_id = callback.data.split("check_pay_")[1]
-    if invoice_id not in PENDING_INVOICES:
-        return await callback.answer("Счет не найден или уже оплачен.", show_alert=True)
-    
-    inv_data = PENDING_INVOICES[invoice_id]
-    method = inv_data["method"]
-    is_paid = False
-    
-    try:
-        timeout = aiohttp.ClientTimeout(total=15)
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False), timeout=timeout) as session:
-            if method == "crypto":
-                headers = {
-                    "Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN,
-                    "User-Agent": DEFAULT_USER_AGENT
-                }
-                async with session.get(f"https://pay.crypt.bot/api/getInvoices?invoice_ids={invoice_id}", headers=headers) as resp:
-                    if resp.status == 200:
-                        resp_data = await resp.json()
-                        if resp_data.get("ok") and resp_data["result"]["items"]:
-                            if resp_data["result"]["items"][0]["status"] == "paid":
-                                is_paid = True
-    except Exception as e:
-        logging.error(f"Ошибка при проверке платежа: {e}")
-        
-    if is_paid:
-        user_id = inv_data["user_id"]
-        amount = inv_data["amount"]
-        user = get_or_create_user(user_id, " ")
-        user["balance"] += amount
-        user["deposits"] += amount
-        del PENDING_INVOICES[invoice_id]
-        
-        await callback.message.edit_text(f"✅ Платеж подтвержден! Баланс пополнен на {amount} $.", parse_mode="HTML")
-        await callback.answer()
-    else:
-        await callback.answer("Счет еще не оплачен.", show_alert=True)
-
-async def handle_webhook(request):
-    data = await request.json()
-    if data.get("status") == "paid":
-        user_id = data.get("user_id")
-        amount = float(data.get("amount"))
-        if user_id in USERS_DB:
-            USERS_DB[user_id]["balance"] += amount
-            USERS_DB[user_id]["deposits"] += amount
-            await bot.send_message(user_id, f"✅ Платеж подтвержден! +{amount} $", parse_mode="HTML")
-    return web.Response(status=200)
-
-@dp.callback_query(F.data.in_({"withdraw_select_balance", "withdraw_select_profile"}))
-async def select_withdraw_method(callback: CallbackQuery, state: FSMContext):
-    source = callback.data.split("_")[-1]
-    await state.update_data(return_to=source)
-    
-    back_cb = "back_to_balance" if source == "balance" else "profile"
-    raw_inline_keyboard = [
-        [{"text": "CryptoBot", "callback_data": "wd_method_crypto"}],
-        [{"text": "< Назад", "callback_data": back_cb}]
-    ]
-    kb = InlineKeyboardMarkup(inline_keyboard=raw_inline_keyboard)
-    await callback.message.edit_text(WITHDRAW_METHODS_TEXT, reply_markup=kb, parse_mode="HTML")
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("wd_method_"))
-async def process_withdraw_method(callback: CallbackQuery, state: FSMContext):
-    method = callback.data.split("_")[-1]
-    await state.update_data(withdraw_method=method)
-    
-    data = await state.get_data()
-    back_cb = "back_to_balance" if data.get("return_to") == "balance" else "profile"
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [{"text": "< Назад", "callback_data": back_cb}]
-    ])
-    await callback.message.edit_text("Введите сумму вывода (от 1.1 $):", reply_markup=kb, parse_mode="HTML")
-    await state.set_state(PaymentStates.waiting_for_withdraw_amount)
-    await callback.answer()
-
-@dp.message(PaymentStates.waiting_for_withdraw_amount)
-async def process_withdraw_amount(message: Message, state: FSMContext):
-    data = await state.get_data()
-    back_cb = "back_to_balance" if data.get("return_to") == "balance" else "profile"
-
-    try:
-        amount = float(message.text.replace(",", "."))
-        if amount < 1.1:
-            kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": back_cb}]])
-            await message.answer("Сумма вывода должна быть от 1.1 $", reply_markup=kb, parse_mode="HTML")
-            return
-    except ValueError:
-        kb = InlineKeyboardMarkup(inline_keyboard=[[{"text": "< Назад", "callback_data": back_cb}]])
-        await message.answer("Пожалуйста, введите корректное число.", reply_markup=kb, parse_mode="HTML")
+    # Проверка КД в 5 секунд
+    last_time = user_cooldowns.get(user_id, 0)
+    if current_time - last_time < 5:
         return
 
-    user = get_or_create_user(message.from_user.id, message.from_user.full_name)
-    
-    if user["balance"] < amount:
-        await message.answer("❌ Недостаточно средств на балансе.", parse_mode="HTML")
-        await state.clear()
-        return
-
-    method = data.get("withdraw_method")
-    
-    user["balance"] -= amount
-    req_id = random.randint(10000, 99999)
-    WITHDRAW_REQUESTS[req_id] = {"user_id": message.from_user.id, "amount": amount, "method": method, "status": "pending"}
-    
-    await message.answer(f"✅ Заявка #{req_id} создана и отправлена на проверку администратору.", parse_mode="HTML")
-    await state.clear()
-    
-    for admin_id in ADMIN_IDS:
-        try:
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="Одобрить", callback_data=f"admin_approve_req_{req_id}")],
-                [InlineKeyboardButton(text="Отклонить", callback_data=f"admin_reject_req_{req_id}")]
-            ])
-            await bot.send_message(admin_id, f"🚨 Заявка #{req_id}\nОт: {message.from_user.id}\nСумма: {amount} $\nСпособ: {method}", reply_markup=kb, parse_mode="HTML")
-        except Exception: pass
-
-@dp.message(Command("admin"))
-async def admin_panel(message: Message):
-    if message.from_user.id not in ADMIN_IDS: return
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Заявки на вывод", callback_data="admin_withdraw_requests")],
-        [InlineKeyboardButton(text="Отнять баланс", callback_data="admin_deduct_bal")],
-        [InlineKeyboardButton(text="Рассылка", callback_data="admin_broadcast")],
-        [InlineKeyboardButton(text="Статистика", callback_data="admin_stats")]
-    ])
-    await message.answer("🔧 Админ-панель:", reply_markup=kb, parse_mode="HTML")
-
-@dp.callback_query(F.data == "admin_stats")
-async def admin_stats(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    total_users = len(USERS_DB)
-    total_deps = sum(u["deposits"] for u in USERS_DB.values())
-    total_wds = sum(u["withdrawals"] for u in USERS_DB.values())
-    await callback.message.answer(f"📊 Статистика:\nПользователей: {total_users}\nВсего пополнений: {total_deps} $\nВсего выводов: {total_wds} $", parse_mode="HTML")
-    await callback.answer()
-
-@dp.callback_query(F.data == "admin_broadcast")
-async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMIN_IDS: return
-    await callback.message.answer("Введите сообщение для рассылки:", parse_mode="HTML")
-    await state.set_state(AdminStates.waiting_for_broadcast)
-    await callback.answer()
-
-@dp.message(AdminStates.waiting_for_broadcast)
-async def process_broadcast(message: Message, state: FSMContext):
-    count = 0
-    for user_id in USERS_DB.keys():
-        try:
-            await bot.send_message(user_id, message.text, entities=message.entities)
-            count += 1
-            await asyncio.sleep(0.05)
-        except Exception: pass
-    await message.answer(f"✅ Рассылка завершена. Отправлено: {count} пользователям.", parse_mode="HTML")
-    await state.clear()
-
-@dp.callback_query(F.data == "admin_deduct_bal")
-async def admin_deduct_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMIN_IDS: return
-    await callback.message.answer("Введите ID пользователя:", parse_mode="HTML")
-    await state.set_state(AdminStates.waiting_for_deduct_id)
-    await callback.answer()
-
-@dp.message(AdminStates.waiting_for_deduct_id)
-async def process_deduct_id(message: Message, state: FSMContext):
-    if not message.text.isdigit(): return await message.answer("ID должен быть числом.", parse_mode="HTML")
-    await state.update_data(deduct_user_id=int(message.text))
-    await message.answer("Введите сумму для списания:", parse_mode="HTML")
-    await state.set_state(AdminStates.waiting_for_deduct_amount)
-
-@dp.message(AdminStates.waiting_for_deduct_amount)
-async def process_deduct_amount(message: Message, state: FSMContext):
+    # Проверяем био пользователя через Telegram API
     try:
-        amount = float(message.text.replace(",", "."))
-    except ValueError: return await message.answer("Неверная сумма.", parse_mode="HTML")
-    data = await state.get_data()
-    user_id = data.get("deduct_user_id")
-    if user_id in USERS_DB:
-        USERS_DB[user_id]["balance"] -= amount
-        await message.answer(f"✅ Списано {amount} $ у {user_id}.", parse_mode="HTML")
-    else: await message.answer("❌ Пользователь не найден.", parse_mode="HTML")
-    await state.clear()
+        chat_info = await bot.get_chat(user_id)
+        user_bio = chat_info.bio or ""
+    except Exception:
+        user_bio = ""
 
-@dp.callback_query(F.data == "admin_withdraw_requests")
-async def admin_show_requests(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS: return
-    pending_reqs = [req_id for req_id, req in WITHDRAW_REQUESTS.items() if req["status"] == "pending"]
-    if not pending_reqs: return await callback.answer("Нет активных заявок.", show_alert=True)
-    for req_id in pending_reqs:
-        req = WITHDRAW_REQUESTS[req_id]
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Одобрить", callback_data=f"admin_approve_req_{req_id}")], [InlineKeyboardButton(text="Отклонить", callback_data=f"admin_reject_req_{req_id}")]])
-        await callback.message.answer(f"🚨 Заявка #{req_id}\nСумма: {req['amount']} $\nСпособ: {req['method']}\nID: {req['user_id']}", reply_markup=kb, parse_mode="HTML")
-    await callback.answer()
+    # Если нужная строчка есть в описании профиля
+    if REQUIRED_BIO in user_bio:
+        add_message_reward(user_id)
+        user_cooldowns[user_id] = current_time
 
-@dp.callback_query(F.data.startswith("admin_approve_req_"))
-async def admin_approve_req_inline(callback: CallbackQuery):
-    req_id = int(callback.data.split("_")[-1])
-    if req_id not in WITHDRAW_REQUESTS or WITHDRAW_REQUESTS[req_id]["status"] != "pending":
-        return await callback.answer("Заявка уже обработана.", show_alert=True)
-        
-    req = WITHDRAW_REQUESTS[req_id]
-    amount = req["amount"]
-    method = req["method"]
-    target_user_id = int(req["user_id"])
-    
-    success = False
-    error_text = ""
-    
-    await callback.message.edit_text(f"⏳ Выполняю перевод по заявке #{req_id} через API...", parse_mode="HTML")
-    
-    try:
-        timeout = aiohttp.ClientTimeout(total=15)
-        async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False), timeout=timeout) as session:
-            if method == "crypto":
-                headers = {
-                    "Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN,
-                    "User-Agent": DEFAULT_USER_AGENT
-                }
-                payload = {
-                    "user_id": target_user_id,
-                    "asset": "USDT",
-                    "amount": str(amount),
-                    "spend_id": str(uuid.uuid4())
-                }
-                async with session.post("https://pay.crypt.bot/api/transfer", headers=headers, json=payload) as resp:
-                    if resp.status == 200:
-                        resp_data = await resp.json()
-                        if resp_data.get("ok"):
-                            success = True
-                        else:
-                            error_text = str(resp_data.get("error", resp_data))
-                    else:
-                        error_text = f"HTTP {resp.status}"
 
-    except Exception as e:
-        error_text = str(e)
-
-    if success:
-        req["status"] = "approved"
-        USERS_DB[target_user_id]["withdrawals"] += amount
-        await bot.send_message(target_user_id, f"✅ Ваш вывод на сумму {amount} $ успешно зачислен на ваш кошелек!", parse_mode="HTML")
-        await callback.message.edit_text(f"✅ Заявка #{req_id} одобрена, средства переведены по API.", parse_mode="HTML")
-    else:
-        err_escaped = html.escape(error_text)
-        await callback.message.edit_text(f"❌ Ошибка API при переводе (#{req_id}).\nЛог: <code>{err_escaped}</code>", parse_mode="HTML")
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("admin_reject_req_"))
-async def admin_reject_req_inline(callback: CallbackQuery):
-    req_id = int(callback.data.split("_")[-1])
-    if req_id not in WITHDRAW_REQUESTS or WITHDRAW_REQUESTS[req_id]["status"] != "pending":
-        return await callback.answer("Заявка уже обработана.", show_alert=True)
-        
-    req = WITHDRAW_REQUESTS[req_id]
-    req["status"] = "rejected"
-    USERS_DB[req["user_id"]]["balance"] += req["amount"]
-    await bot.send_message(req["user_id"], f"❌ Вывод {req['amount']} $ отклонен, средства возвращены на баланс.", parse_mode="HTML")
-    await callback.message.edit_text(f"❌ Заявка #{req_id} ОТКЛОНЕНА", parse_mode="HTML")
-    await callback.answer()
-
-async def start_web_server():
-    app = web.Application()
-    app.router.add_post("/webhook", handle_webhook)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
-    await site.start()
-
+# -------------------------------------------------------------
+# ЗАПУСК БОТА
+# -------------------------------------------------------------
 async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    await asyncio.gather(dp.start_polling(bot), start_web_server())
+    init_db()
+    logging.basicConfig(level=logging.INFO)
+    print("🚀 Бот Sparta Cash успешно запущен!")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
