@@ -22,8 +22,10 @@ REWARD_PER_MESSAGE = 0.00024
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Кэш для отслеживания задержки (5 секунд) отправки сообщений пользователями
+# Кэш для отслеживания задержки (5 секунд)
 user_cooldowns = {}
+# Кэш для хранения результатов проверки БИО (user_id: (has_bio_bool, check_timestamp))
+bio_cache = {}
 
 
 # -------------------------------------------------------------
@@ -57,12 +59,14 @@ def get_user(user_id: int):
 def add_message_reward(user_id: int):
     conn = sqlite3.connect("sparta_cash.db")
     cursor = conn.cursor()
+    # Исправлено: если пользователя нет в базе, он создаётся автоматически
     cursor.execute("""
-        UPDATE users 
-        SET messages_count = messages_count + 1, 
-            balance = balance + ? 
-        WHERE user_id = ?
-    """, (REWARD_PER_MESSAGE, user_id))
+        INSERT INTO users (user_id, messages_count, balance)
+        VALUES (?, 1, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            messages_count = messages_count + 1,
+            balance = balance + ?
+    """, (user_id, REWARD_PER_MESSAGE, REWARD_PER_MESSAGE))
     conn.commit()
     conn.close()
 
@@ -113,13 +117,11 @@ def get_chats_keyboard():
 # -------------------------------------------------------------
 @dp.message(CommandStart(), F.chat.type == "private")
 async def cmd_start(message: Message):
-    # Удаляем сообщение с командой /start от пользователя
     try:
         await message.delete()
     except Exception:
         pass
 
-    # Отправляем приветственное сообщение
     await message.answer(START_TEXT, parse_mode=ParseMode.HTML, reply_markup=get_main_keyboard())
 
 
@@ -159,6 +161,25 @@ async def handle_withdraw(call: CallbackQuery):
 # -------------------------------------------------------------
 # ХЕНДЛЕР ОБРАБОТКИ СООБЩЕНИЙ В ЧАТАХ (ГРУППАХ)
 # -------------------------------------------------------------
+async def check_user_bio(user_id: int) -> bool:
+    current_time = time.time()
+    # Если запрашивали био меньше 5 минут назад, берём значение из кэша
+    if user_id in bio_cache:
+        has_bio, last_check = bio_cache[user_id]
+        if current_time - last_check < 300:
+            return has_bio
+
+    try:
+        chat_info = await bot.get_chat(user_id)
+        user_bio = chat_info.bio or ""
+        has_bio = REQUIRED_BIO in user_bio
+    except Exception:
+        has_bio = False
+
+    bio_cache[user_id] = (has_bio, current_time)
+    return has_bio
+
+
 @dp.message(F.chat.type.in_({"group", "supergroup"}))
 async def track_group_messages(message: Message):
     if not message.from_user or message.from_user.is_bot:
@@ -167,20 +188,13 @@ async def track_group_messages(message: Message):
     user_id = message.from_user.id
     current_time = time.time()
 
-    # Проверка КД в 5 секунд
+    # Проверка КД в 5 секунд на отправку сообщений
     last_time = user_cooldowns.get(user_id, 0)
     if current_time - last_time < 5:
         return
 
-    # Проверяем био пользователя через Telegram API
-    try:
-        chat_info = await bot.get_chat(user_id)
-        user_bio = chat_info.bio or ""
-    except Exception:
-        user_bio = ""
-
-    # Если нужная строчка есть в описании профиля
-    if REQUIRED_BIO in user_bio:
+    # Проверка наличия нужного био
+    if await check_user_bio(user_id):
         add_message_reward(user_id)
         user_cooldowns[user_id] = current_time
 
