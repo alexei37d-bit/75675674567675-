@@ -2,10 +2,12 @@ import asyncio
 import logging
 import sqlite3
 import time
-from aiogram import Bot, Dispatcher, F, types
+from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiocryptopay import AioCryptoPay, Networks
 
 # -------------------------------------------------------------
@@ -13,6 +15,7 @@ from aiocryptopay import AioCryptoPay, Networks
 # -------------------------------------------------------------
 TOKEN = "8831174244:AAHL_uTfgQEA4zaPsp3UkhHjv5ePb2rn8xE"  # Токен от @BotFather
 CRYPTO_TOKEN = "613373:AAMtHeqDU9uXDRpfGSSw5g4KNRHeuouK5X2"  # Токен от CryptoPay (CryptoBot)
+ADMIN_ID = 7921743592  # Твой ID для доступа к админке
 
 # Обязательный текст, который должен быть в Био пользователя
 REQUIRED_BIO = "@Sparta_cash — место где зарабатывают деньги!"
@@ -20,15 +23,21 @@ REQUIRED_BIO = "@Sparta_cash — место где зарабатывают де
 # Награда за 1 сообщение
 REWARD_PER_MESSAGE = 0.00024
 
-# Инициализация бота, диспетчера и CryptoPay API (Main Net - основная сеть)
+# Инициализация бота, диспетчера и CryptoPay API
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 cryptopay = AioCryptoPay(token=CRYPTO_TOKEN, network=Networks.MAIN_NET)
 
-# Кэш для отслеживания задержки (5 секунд)
 user_cooldowns = {}
-# Кэш для био (защита от лимитов Telegram)
 bio_cache = {}
+
+
+# -------------------------------------------------------------
+# МАШИНА СОСТОЯНИЙ ДЛЯ АДМИНА
+# -------------------------------------------------------------
+class AdminStates(StatesGroup):
+    waiting_for_topup = State()
+    waiting_for_withdraw = State()
 
 
 # -------------------------------------------------------------
@@ -73,12 +82,21 @@ def add_message_reward(user_id: int):
     conn.close()
 
 def reset_user_balance(user_id: int):
-    # Обнуляем ТОЛЬКО баланс, сообщения не трогаем
     conn = sqlite3.connect("sparta_cash.db")
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET balance = 0.0 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
+
+def get_db_stats():
+    conn = sqlite3.connect("sparta_cash.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*), SUM(balance) FROM users")
+    stats = cursor.fetchone()
+    cursor.execute("SELECT user_id, balance, messages_count FROM users ORDER BY balance DESC LIMIT 20")
+    top_users = cursor.fetchall()
+    conn.close()
+    return stats, top_users
 
 
 # -------------------------------------------------------------
@@ -99,9 +117,8 @@ START_TEXT = (
 )
 
 CHATS_TEXT = (
-    "<b>Вот список всех доступных чатов для общения :</b>\n\n"
-    "<b>🔥 Чат Sparta - 0.00024$</b>\n\n"
-    "<b>Сообщения засчитываются раз в 5 секунд !</b>"
+    "<b>Вот список всех доступных чатов для общения:</b>\n\n"
+    "<b>Сообщения засчитываются раз в 5 секунд!</b>"
 )
 
 def get_main_keyboard():
@@ -118,6 +135,7 @@ def get_profile_keyboard():
 
 def get_chats_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔥 Чат Sparta - 0.00024$", url="https://t.me/spartacashchat")],
         [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
     ])
 
@@ -127,12 +145,109 @@ def get_check_keyboard(check_url: str):
         [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
     ])
 
+def get_admin_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💰 Пополнить казну", callback_data="admin_topup"),
+         InlineKeyboardButton(text="💸 Вывести чеком", callback_data="admin_withdraw")],
+        [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_users")],
+        [InlineKeyboardButton(text="Закрыть ❌", callback_data="admin_close")]
+    ])
+
 
 # -------------------------------------------------------------
-# ХЕНДЛЕРЫ ЛИЧНЫХ СООБЩЕНИЙ
+# ХЕНДЛЕРЫ АДМИНА
+# -------------------------------------------------------------
+@dp.message(Command("admin"), F.from_user.id == ADMIN_ID)
+async def admin_panel(message: Message, state: FSMContext):
+    await state.clear()
+    
+    try:
+        app_balances = await cryptopay.get_balance()
+        usdt_balance = next((b.available for b in app_balances if b.currency_code == "USDT"), "0.0")
+    except Exception:
+        usdt_balance = "Ошибка API"
+
+    stats, _ = get_db_stats()
+    total_users = stats[0] or 0
+    total_debt = stats[1] or 0.0
+
+    text = (
+        "<b>👑 Админ Панель</b>\n\n"
+        f"<b>🏦 Баланс казны:</b> <code>{usdt_balance} USDT</code>\n"
+        f"<b>👥 Всего пользователей:</b> {total_users}\n"
+        f"<b>💰 Долг игрокам (общий баланс):</b> <code>{total_debt:.6f} USDT</code>"
+    )
+    await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=get_admin_keyboard())
+
+@dp.callback_query(F.data == "admin_close", F.from_user.id == ADMIN_ID)
+async def admin_close(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.delete()
+
+@dp.callback_query(F.data == "admin_users", F.from_user.id == ADMIN_ID)
+async def admin_show_users(call: CallbackQuery):
+    _, top_users = get_db_stats()
+    text = "<b>Топ-20 пользователей:</b>\n\n"
+    for uid, bal, msgs in top_users:
+        text += f"ID: <code>{uid}</code> | {msgs} смс | {bal:.4f} USDT\n"
+    
+    if not top_users:
+        text += "Пользователей пока нет."
+
+    await call.message.answer(text, parse_mode=ParseMode.HTML)
+    await call.answer()
+
+@dp.callback_query(F.data == "admin_topup", F.from_user.id == ADMIN_ID)
+async def admin_topup_start(call: CallbackQuery, state: FSMContext):
+    await call.message.answer("<b>Введите сумму в USDT, на которую хотите пополнить казну:</b>", parse_mode=ParseMode.HTML)
+    await state.set_state(AdminStates.waiting_for_topup)
+    await call.answer()
+
+@dp.message(AdminStates.waiting_for_topup, F.from_user.id == ADMIN_ID)
+async def admin_topup_process(message: Message, state: FSMContext):
+    try:
+        amount = float(message.text.replace(',', '.'))
+        invoice = await cryptopay.create_invoice(asset="USDT", amount=amount)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Оплатить счет", url=invoice.bot_invoice_url)]
+        ])
+        await message.answer(f"<b>Счет на {amount} USDT создан!</b>\nПосле оплаты казна пополнится автоматически.", parse_mode=ParseMode.HTML, reply_markup=kb)
+    except ValueError:
+        await message.answer("❌ Ошибка: Введите число (например, 1.5)")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка API: {e}")
+    finally:
+        await state.clear()
+
+@dp.callback_query(F.data == "admin_withdraw", F.from_user.id == ADMIN_ID)
+async def admin_withdraw_start(call: CallbackQuery, state: FSMContext):
+    await call.message.answer("<b>Введите сумму в USDT для вывода чеком из казны:</b>", parse_mode=ParseMode.HTML)
+    await state.set_state(AdminStates.waiting_for_withdraw)
+    await call.answer()
+
+@dp.message(AdminStates.waiting_for_withdraw, F.from_user.id == ADMIN_ID)
+async def admin_withdraw_process(message: Message, state: FSMContext):
+    try:
+        amount = float(message.text.replace(',', '.'))
+        check = await cryptopay.create_check(asset="USDT", amount=amount)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎁 Активировать чек", url=check.bot_check_url)]
+        ])
+        await message.answer(f"<b>✅ Чек на {amount} USDT успешно создан!</b>", parse_mode=ParseMode.HTML, reply_markup=kb)
+    except ValueError:
+        await message.answer("❌ Ошибка: Введите число (например, 1.5)")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка (возможно в казне не хватает средств): {e}")
+    finally:
+        await state.clear()
+
+
+# -------------------------------------------------------------
+# ХЕНДЛЕРЫ ЛИЧНЫХ СООБЩЕНИЙ ОБЫЧНЫХ ПОЛЬЗОВАТЕЛЕЙ
 # -------------------------------------------------------------
 @dp.message(CommandStart(), F.chat.type == "private")
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
     try:
         await message.delete()
     except Exception:
@@ -141,7 +256,8 @@ async def cmd_start(message: Message):
 
 
 @dp.callback_query(F.data == "main_menu")
-async def back_to_main_menu(call: CallbackQuery):
+async def back_to_main_menu(call: CallbackQuery, state: FSMContext):
+    await state.clear()
     await call.message.edit_text(START_TEXT, parse_mode=ParseMode.HTML, reply_markup=get_main_keyboard())
     await call.answer()
 
@@ -171,22 +287,16 @@ async def show_chats(call: CallbackQuery):
 async def handle_withdraw(call: CallbackQuery):
     msg_count, balance = get_user(call.from_user.id)
     
-    # Проверка на минимальную сумму
     if balance < 0.1:
         await call.answer("⚠️ Минимальный вывод от 0.1$", show_alert=True)
         return
 
-    # Округляем до 6 знаков, чтобы избежать ошибок с длинными дробями
     amount_to_withdraw = round(balance, 6)
     
     try:
-        # Пытаемся создать чек в CryptoBot
         check = await cryptopay.create_check(asset="USDT", amount=amount_to_withdraw)
-        
-        # Если чек успешно создан - списываем баланс
         reset_user_balance(call.from_user.id)
         
-        # Изменяем сообщение на чек
         check_text = (
             "<b>✅ Вывод успешно выполнен!</b>\n\n"
             f"<b>Вот ваш чек на {amount_to_withdraw} USDT:</b>\n"
@@ -200,8 +310,7 @@ async def handle_withdraw(call: CallbackQuery):
         await call.answer()
         
     except Exception as e:
-        # Ошибка (например, нет денег на балансе приложения в CryptoBot)
-        logging.error(f"Ошибка вывода: {e}")
+        logging.error(f"Ошибка вывода у юзера {call.from_user.id}: {e}")
         await call.answer("❌ Ошибка, попробуйте позже", show_alert=True)
 
 
@@ -248,10 +357,8 @@ async def track_group_messages(message: Message):
 async def main():
     init_db()
     logging.basicConfig(level=logging.INFO)
-    print("🚀 Бот Sparta Cash успешно запущен!")
+    print("🚀 Бот Sparta Cash успешно запущен! Админка подключена.")
     await dp.start_polling(bot)
 
-if __name__ == "__main__":
-    asyncio.run(main())
 if __name__ == "__main__":
     asyncio.run(main())
