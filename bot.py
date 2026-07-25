@@ -1,29 +1,27 @@
 import asyncio
 import logging
-import sqlite3
 import time
+import aiosqlite
 from aiogram import Bot, Dispatcher, F
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart, Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.exceptions import TelegramBadRequest
 from aiocryptopay import AioCryptoPay, Networks
 
 # -------------------------------------------------------------
 # НАСТРОЙКИ
 # -------------------------------------------------------------
-TOKEN = "8831174244:AAHL_uTfgQEA4zaPsp3UkhHjv5ePb2rn8xE"  # Токен от @BotFather
-CRYPTO_TOKEN = "613373:AAMtHeqDU9uXDRpfGSSw5g4KNRHeuouK5X2"  # Токен от CryptoPay (CryptoBot)
-ADMIN_ID = 7921743592  # Твой ID для доступа к админке
+TOKEN = "8831174244:AAHL_uTfgQEA4zaPsp3UkhHjv5ePb2rn8xE"
+CRYPTO_TOKEN = "613373:AAMtHeqDU9uXDRpfGSSw5g4KNRHeuouK5X2"
+ADMIN_ID = 7921743592
 
-# Обязательный текст, который должен быть в Био пользователя
 REQUIRED_BIO = "@Sparta_cash — место где зарабатывают деньги!"
-
-# Награда за 1 сообщение
 REWARD_PER_MESSAGE = 0.00024
+DB_NAME = "sparta_cash.db"
 
-# Инициализация бота, диспетчера и CryptoPay API
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 cryptopay = AioCryptoPay(token=CRYPTO_TOKEN, network=Networks.MAIN_NET)
@@ -41,61 +39,64 @@ class AdminStates(StatesGroup):
 
 
 # -------------------------------------------------------------
-# БАЗА ДАННЫХ (SQLite)
+# АСИНХРОННАЯ БАЗА ДАННЫХ (aiosqlite)
 # -------------------------------------------------------------
-def init_db():
-    conn = sqlite3.connect("sparta_cash.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            messages_count INTEGER DEFAULT 0,
-            balance REAL DEFAULT 0.0
-        )
-    """)
-    conn.commit()
-    conn.close()
+async def init_db():
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                messages_count INTEGER DEFAULT 0,
+                balance REAL DEFAULT 0.0
+            )
+        """)
+        await db.commit()
 
-def get_user(user_id: int):
-    conn = sqlite3.connect("sparta_cash.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT messages_count, balance FROM users WHERE user_id = ?", (user_id,))
-    user = cursor.fetchone()
-    if not user:
-        cursor.execute("INSERT INTO users (user_id, messages_count, balance) VALUES (?, 0, 0.0)", (user_id,))
-        conn.commit()
-        user = (0, 0.0)
-    conn.close()
-    return user
+async def get_user(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT messages_count, balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            user = await cursor.fetchone()
+            if not user:
+                await db.execute("INSERT INTO users (user_id, messages_count, balance) VALUES (?, 0, 0.0)", (user_id,))
+                await db.commit()
+                return (0, 0.0)
+            return user
 
-def add_message_reward(user_id: int):
-    conn = sqlite3.connect("sparta_cash.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO users (user_id, messages_count, balance)
-        VALUES (?, 1, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            messages_count = messages_count + 1,
-            balance = balance + ?
-    """, (user_id, REWARD_PER_MESSAGE, REWARD_PER_MESSAGE))
-    conn.commit()
-    conn.close()
+async def add_message_reward(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            INSERT INTO users (user_id, messages_count, balance)
+            VALUES (?, 1, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                messages_count = messages_count + 1,
+                balance = balance + ?
+        """, (user_id, REWARD_PER_MESSAGE, REWARD_PER_MESSAGE))
+        await db.commit()
 
-def reset_user_balance(user_id: int):
-    conn = sqlite3.connect("sparta_cash.db")
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET balance = 0.0 WHERE user_id = ?", (user_id,))
-    conn.commit()
-    conn.close()
+async def deduct_balance(user_id: int, amount: float) -> bool:
+    """Безопасное списание средств с проверкой баланса"""
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            user = await cursor.fetchone()
+            if not user or user[0] < amount:
+                return False  # Недостаточно средств
+        
+        await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, user_id))
+        await db.commit()
+        return True
 
-def get_db_stats():
-    conn = sqlite3.connect("sparta_cash.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*), SUM(balance) FROM users")
-    stats = cursor.fetchone()
-    cursor.execute("SELECT user_id, balance, messages_count FROM users ORDER BY balance DESC LIMIT 20")
-    top_users = cursor.fetchall()
-    conn.close()
+async def refund_balance(user_id: int, amount: float):
+    """Возврат средств, если API выдал ошибку"""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
+        await db.commit()
+
+async def get_db_stats():
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT COUNT(*), SUM(balance) FROM users") as cursor:
+            stats = await cursor.fetchone()
+        async with db.execute("SELECT user_id, balance, messages_count FROM users ORDER BY balance DESC LIMIT 20") as cursor:
+            top_users = await cursor.fetchall()
     return stats, top_users
 
 
@@ -167,7 +168,7 @@ async def admin_panel(message: Message, state: FSMContext):
     except Exception:
         usdt_balance = "Ошибка API"
 
-    stats, _ = get_db_stats()
+    stats, _ = await get_db_stats()
     total_users = stats[0] or 0
     total_debt = stats[1] or 0.0
 
@@ -185,8 +186,9 @@ async def admin_close(call: CallbackQuery, state: FSMContext):
     await call.message.delete()
 
 @dp.callback_query(F.data == "admin_users", F.from_user.id == ADMIN_ID)
-async def admin_show_users(call: CallbackQuery):
-    _, top_users = get_db_stats()
+async def admin_show_users(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    _, top_users = await get_db_stats()
     text = "<b>Топ-20 пользователей:</b>\n\n"
     for uid, bal, msgs in top_users:
         text += f"ID: <code>{uid}</code> | {msgs} смс | {bal:.4f} USDT\n"
@@ -258,13 +260,17 @@ async def cmd_start(message: Message, state: FSMContext):
 @dp.callback_query(F.data == "main_menu")
 async def back_to_main_menu(call: CallbackQuery, state: FSMContext):
     await state.clear()
-    await call.message.edit_text(START_TEXT, parse_mode=ParseMode.HTML, reply_markup=get_main_keyboard())
+    try:
+        await call.message.edit_text(START_TEXT, parse_mode=ParseMode.HTML, reply_markup=get_main_keyboard())
+    except TelegramBadRequest:
+        pass
     await call.answer()
 
 
 @dp.callback_query(F.data == "profile")
-async def show_profile(call: CallbackQuery):
-    msg_count, balance = get_user(call.from_user.id)
+async def show_profile(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    msg_count, balance = await get_user(call.from_user.id)
     user_name = call.from_user.full_name
 
     profile_text = (
@@ -273,19 +279,27 @@ async def show_profile(call: CallbackQuery):
         f"<b>📨 Всего сообщений отправлено: {msg_count}</b>\n"
         f"<b>💰 Баланс: {balance:.6f} USDT</b>"
     )
-    await call.message.edit_text(profile_text, parse_mode=ParseMode.HTML, reply_markup=get_profile_keyboard())
+    try:
+        await call.message.edit_text(profile_text, parse_mode=ParseMode.HTML, reply_markup=get_profile_keyboard())
+    except TelegramBadRequest:
+        pass
     await call.answer()
 
 
 @dp.callback_query(F.data == "chats")
-async def show_chats(call: CallbackQuery):
-    await call.message.edit_text(CHATS_TEXT, parse_mode=ParseMode.HTML, reply_markup=get_chats_keyboard())
+async def show_chats(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    try:
+        await call.message.edit_text(CHATS_TEXT, parse_mode=ParseMode.HTML, reply_markup=get_chats_keyboard())
+    except TelegramBadRequest:
+        pass
     await call.answer()
 
 
 @dp.callback_query(F.data == "withdraw")
-async def handle_withdraw(call: CallbackQuery):
-    msg_count, balance = get_user(call.from_user.id)
+async def handle_withdraw(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    _, balance = await get_user(call.from_user.id)
     
     if balance < 0.1:
         await call.answer("⚠️ Минимальный вывод от 0.1$", show_alert=True)
@@ -293,9 +307,15 @@ async def handle_withdraw(call: CallbackQuery):
 
     amount_to_withdraw = round(balance, 6)
     
+    # 1. ЗАЩИТА ОТ ДАБЛ СПЕНДА (Сначала списываем)
+    success = await deduct_balance(call.from_user.id, amount_to_withdraw)
+    if not success:
+        await call.answer("❌ Ошибка списания баланса", show_alert=True)
+        return
+    
+    # 2. Только после списания создаем чек
     try:
         check = await cryptopay.create_check(asset="USDT", amount=amount_to_withdraw)
-        reset_user_balance(call.from_user.id)
         
         check_text = (
             "<b>✅ Вывод успешно выполнен!</b>\n\n"
@@ -310,8 +330,10 @@ async def handle_withdraw(call: CallbackQuery):
         await call.answer()
         
     except Exception as e:
+        # 3. Если произошла ошибка (нет денег в казне и тд) — ВОЗВРАЩАЕМ средства
         logging.error(f"Ошибка вывода у юзера {call.from_user.id}: {e}")
-        await call.answer("❌ Ошибка, попробуйте позже", show_alert=True)
+        await refund_balance(call.from_user.id, amount_to_withdraw)
+        await call.answer("❌ Ошибка казны, попробуйте позже. Средства возвращены на баланс.", show_alert=True)
 
 
 # -------------------------------------------------------------
@@ -319,6 +341,11 @@ async def handle_withdraw(call: CallbackQuery):
 # -------------------------------------------------------------
 async def check_user_bio(user_id: int) -> bool:
     current_time = time.time()
+    
+    # Очистка кэша, чтобы не кончилась ОЗУ сервера
+    if len(bio_cache) > 5000:
+        bio_cache.clear()
+        
     if user_id in bio_cache:
         has_bio, last_check = bio_cache[user_id]
         if current_time - last_check < 300:
@@ -341,13 +368,17 @@ async def track_group_messages(message: Message):
 
     user_id = message.from_user.id
     current_time = time.time()
+    
+    # Защита памяти
+    if len(user_cooldowns) > 5000:
+        user_cooldowns.clear()
 
     last_time = user_cooldowns.get(user_id, 0)
     if current_time - last_time < 5:
         return
 
     if await check_user_bio(user_id):
-        add_message_reward(user_id)
+        await add_message_reward(user_id)
         user_cooldowns[user_id] = current_time
 
 
@@ -355,9 +386,9 @@ async def track_group_messages(message: Message):
 # ЗАПУСК БОТА
 # -------------------------------------------------------------
 async def main():
-    init_db()
+    await init_db()
     logging.basicConfig(level=logging.INFO)
-    print("🚀 Бот Sparta Cash успешно запущен! Админка подключена.")
+    print("🚀 Бот Sparta Cash успешно запущен (Без багов и с защитой)!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
