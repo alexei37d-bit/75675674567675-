@@ -15,7 +15,7 @@ from aiocryptopay import AioCryptoPay, Networks
 # НАСТРОЙКИ
 # -------------------------------------------------------------
 TOKEN = "8829468133:AAFKB7SOH7pERK0TWfw3T_AroQoK6kCTij0"
-CRYPTO_TOKEN = "613373:AAMtHeqDU9uXDRpfGSSw5g4KNRHeuouK5X2"  # ЗАМЕНИТЕ НА ОСНОВНОЙ ТОКЕН!
+CRYPTO_TOKEN = "613373:AAMtHeqDU9uXDRpfGSSw5g4KNRHeuouK5X2"
 ADMIN_ID = 7921743592
 
 REQUIRED_BIO = "@Sparta_cash — место где зарабатывают деньги!"
@@ -135,7 +135,8 @@ CHATS_TEXT = (
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎮 Профиль", callback_data="profile")],
-        [InlineKeyboardButton(text="💬 Чаты", callback_data="chats")]
+        [InlineKeyboardButton(text="💬 Чаты", callback_data="chats")],
+        [InlineKeyboardButton(text="✅ Проверить", callback_data="check_bio")]
     ])
 
 def get_profile_keyboard():
@@ -150,10 +151,9 @@ def get_chats_keyboard():
         [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
     ])
 
-def get_check_keyboard(check_url: str):
+def get_check_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎁 Активировать чек", url=check_url)],
-        [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
+        [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu_from_check")]
     ])
 
 def get_admin_keyboard():
@@ -242,7 +242,7 @@ async def admin_topup_process(message: Message, state: FSMContext):
     finally:
         await state.clear()
 
-# --- Вывод чеком из казны (админ) ---
+# --- Вывод чеком из казны ---
 @dp.callback_query(F.data == "admin_withdraw", F.from_user.id == ADMIN_ID)
 async def admin_withdraw_start(call: CallbackQuery, state: FSMContext):
     await call.message.answer("<b>Введите сумму в USDT для вывода чеком из казны:</b>", parse_mode=ParseMode.HTML)
@@ -322,6 +322,13 @@ async def back_to_main_menu(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
+@dp.callback_query(F.data == "main_menu_from_check")
+async def back_to_main_menu_from_check(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await call.message.answer(START_TEXT, parse_mode=ParseMode.HTML, reply_markup=get_main_keyboard())
+    await call.answer()
+
+
 @dp.callback_query(F.data == "profile")
 async def show_profile(call: CallbackQuery, state: FSMContext):
     await state.clear()
@@ -351,6 +358,66 @@ async def show_chats(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
+@dp.callback_query(F.data == "check_bio")
+async def check_bio(call: CallbackQuery, state: FSMContext):
+    await state.clear()
+    
+    user_id = call.from_user.id
+    
+    # Очищаем кэш чтобы получить актуальную информацию
+    if user_id in bio_cache:
+        del bio_cache[user_id]
+    
+    try:
+        chat_info = await bot.get_chat(user_id)
+        user_bio = chat_info.bio or ""
+        has_bio = REQUIRED_BIO in user_bio
+        
+        # Получаем данные пользователя из БД
+        msg_count, balance = await get_user(user_id)
+        
+        if has_bio:
+            check_text = (
+                "✅ <b>Статус: ВСЁ ХОРОШО!</b>\n\n"
+                f"📝 <b>Приписка в био:</b> ✅ Есть\n"
+                f"📨 <b>Всего сообщений:</b> {msg_count}\n"
+                f"💰 <b>Баланс:</b> {balance:.6f} USDT\n\n"
+                "🎯 Продолжайте общаться в чатах и зарабатывать!\n"
+                "💡 Каждое сообщение приносит вам 0.00024 USDT"
+            )
+        else:
+            check_text = (
+                "❌ <b>У вас НЕТ приписки в био!</b>\n\n"
+                "📝 <b>Требуемая приписка:</b>\n"
+                f"<code>{REQUIRED_BIO}</code>\n\n"
+                "⚠️ <b>Важно:</b>\n"
+                "• Добавьте эту приписку в свой профиль\n"
+                "• После добавления сообщения начнут засчитываться\n"
+                "• Нажмите кнопку ниже, чтобы обновить статус"
+            )
+        
+        # Создаем клавиатуру с кнопкой обновления
+        check_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Обновить статус", callback_data="check_bio")],
+            [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
+        ])
+        
+        await call.message.edit_text(
+            check_text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=check_keyboard
+        )
+        
+        # Сохраняем в кэш
+        bio_cache[user_id] = (has_bio, time.time())
+        
+    except Exception as e:
+        logging.error(f"Ошибка проверки био: {e}")
+        await call.answer("❌ Ошибка при проверке. Попробуйте позже.", show_alert=True)
+    
+    await call.answer()
+
+
 @dp.callback_query(F.data == "withdraw")
 async def handle_withdraw(call: CallbackQuery, state: FSMContext):
     await state.clear()
@@ -368,21 +435,26 @@ async def handle_withdraw(call: CallbackQuery, state: FSMContext):
         return
     
     try:
-        # СОЗДАЕМ ЧЕК ДЛЯ ПОЛЬЗОВАТЕЛЯ
         check = await cryptopay.create_check(asset="USDT", amount=amount_to_withdraw)
         
         check_text = (
             "<b>✅ Вывод успешно выполнен!</b>\n\n"
             f"<b>Вот ваш чек на {amount_to_withdraw} USDT:</b>\n"
             f"{check.bot_check_url}\n\n"
-            "💡 Нажмите кнопку ниже, чтобы активировать чек и получить средства"
+            "💡 Нажмите на кнопку, чтобы активировать чек и получить средства\n\n"
+            "⚠️ Чек действителен в течение 7 дней"
         )
-        await call.message.edit_text(
+        
+        await call.message.answer(
             check_text, 
             parse_mode=ParseMode.HTML, 
-            reply_markup=get_check_keyboard(check.bot_check_url)
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🎁 Активировать чек", url=check.bot_check_url)],
+                [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu_from_check")]
+            ])
         )
-        await call.answer()
+        
+        await call.answer("✅ Чек создан!", show_alert=False)
         
     except Exception as e:
         logging.error(f"Ошибка вывода у юзера {call.from_user.id}: {e}")
@@ -443,5 +515,7 @@ async def main():
     print("🚀 Бот Sparta Cash успешно запущен!")
     await dp.start_polling(bot)
 
+if __name__ == "__main__":
+    asyncio.run(main())
 if __name__ == "__main__":
     asyncio.run(main())
