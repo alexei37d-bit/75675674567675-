@@ -15,7 +15,7 @@ from aiocryptopay import AioCryptoPay, Networks
 # НАСТРОЙКИ
 # -------------------------------------------------------------
 TOKEN = "8829468133:AAFKB7SOH7pERK0TWfw3T_AroQoK6kCTij0"
-CRYPTO_TOKEN = "613373:AAMtHeqDU9uXDRpfGSSw5g4KNRHeuouK5X2"
+CRYPTO_TOKEN = "613373:AAMtHeqDU9uXDRpfGSSw5g4KNRHeuouK5X2"  # ЗАМЕНИТЕ НА ОСНОВНОЙ ТОКЕН!
 ADMIN_ID = 7921743592
 
 REQUIRED_BIO = "@Sparta_cash — место где зарабатывают деньги!"
@@ -38,13 +38,6 @@ class AdminStates(StatesGroup):
     waiting_for_withdraw = State()
     waiting_for_accrual_id = State()
     waiting_for_accrual_amount = State()
-
-
-# -------------------------------------------------------------
-# МАШИНА СОСТОЯНИЙ ДЛЯ ВЫВОДА
-# -------------------------------------------------------------
-class WithdrawStates(StatesGroup):
-    waiting_for_wallet = State()
 
 
 # -------------------------------------------------------------
@@ -157,9 +150,9 @@ def get_chats_keyboard():
         [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
     ])
 
-def get_invoice_keyboard(invoice_url: str):
+def get_check_keyboard(check_url: str):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💳 Оплатить счет", url=invoice_url)],
+        [InlineKeyboardButton(text="🎁 Активировать чек", url=check_url)],
         [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
     ])
 
@@ -249,7 +242,7 @@ async def admin_topup_process(message: Message, state: FSMContext):
     finally:
         await state.clear()
 
-# --- Вывод чеком из казны ---
+# --- Вывод чеком из казны (админ) ---
 @dp.callback_query(F.data == "admin_withdraw", F.from_user.id == ADMIN_ID)
 async def admin_withdraw_start(call: CallbackQuery, state: FSMContext):
     await call.message.answer("<b>Введите сумму в USDT для вывода чеком из казны:</b>", parse_mode=ParseMode.HTML)
@@ -260,11 +253,11 @@ async def admin_withdraw_start(call: CallbackQuery, state: FSMContext):
 async def admin_withdraw_process(message: Message, state: FSMContext):
     try:
         amount = float(message.text.replace(',', '.'))
-        invoice = await cryptopay.create_invoice(asset="USDT", amount=amount)
+        check = await cryptopay.create_check(asset="USDT", amount=amount)
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💳 Оплатить счет", url=invoice.bot_invoice_url)]
+            [InlineKeyboardButton(text="🎁 Активировать чек", url=check.bot_check_url)]
         ])
-        await message.answer(f"<b>✅ Счет на {amount} USDT создан!</b>\nИспользуйте его для вывода средств из казны.", parse_mode=ParseMode.HTML, reply_markup=kb)
+        await message.answer(f"<b>✅ Чек на {amount} USDT успешно создан!</b>", parse_mode=ParseMode.HTML, reply_markup=kb)
     except ValueError:
         await message.answer("❌ Ошибка: Введите число (например, 1.5)")
     except Exception as e:
@@ -367,85 +360,34 @@ async def handle_withdraw(call: CallbackQuery, state: FSMContext):
         await call.answer("⚠️ Минимальный вывод от 0.1$", show_alert=True)
         return
 
-    await call.message.answer(
-        "💳 Введите ваш USDT (TRC20) адрес для вывода средств:\n"
-        "⚠️ Убедитесь, что адрес правильный!\n"
-        "Адрес должен начинаться с 'T' и содержать 34 символа.",
-        parse_mode=ParseMode.HTML
-    )
-    await state.set_state(WithdrawStates.waiting_for_wallet)
-    await call.answer()
-
-@dp.message(WithdrawStates.waiting_for_wallet)
-async def process_withdraw(message: Message, state: FSMContext):
-    wallet_address = message.text.strip()
-    
-    # Проверка формата TRC20 адреса
-    if not wallet_address.startswith('T') or len(wallet_address) != 34:
-        await message.answer(
-            "❌ Неверный формат TRC20 адреса.\n"
-            "Адрес должен начинаться с 'T' и содержать 34 символа.\n"
-            "Попробуйте снова или введите /cancel для отмены.",
-            parse_mode=ParseMode.HTML
-        )
-        return
-    
-    _, balance = await get_user(message.from_user.id)
     amount_to_withdraw = round(balance, 6)
     
-    if amount_to_withdraw < 0.1:
-        await message.answer("❌ Минимальная сумма вывода 0.1 USDT")
-        await state.clear()
-        return
-    
-    success = await deduct_balance(message.from_user.id, amount_to_withdraw)
+    success = await deduct_balance(call.from_user.id, amount_to_withdraw)
     if not success:
-        await message.answer("❌ Ошибка списания баланса")
-        await state.clear()
+        await call.answer("❌ Ошибка списания баланса", show_alert=True)
         return
     
     try:
-        # Создаем инвойс для пользователя
-        invoice = await cryptopay.create_invoice(
-            asset="USDT",
-            amount=amount_to_withdraw
-        )
+        # СОЗДАЕМ ЧЕК ДЛЯ ПОЛЬЗОВАТЕЛЯ
+        check = await cryptopay.create_check(asset="USDT", amount=amount_to_withdraw)
         
-        # Отправляем пользователю ссылку на оплату
-        # В реальном проекте здесь должен быть перевод на кошелек пользователя
-        # Но так как это тестовый токен, отправляем инвойс
-        await message.answer(
-            f"✅ Запрос на вывод {amount_to_withdraw:.6f} USDT создан!\n\n"
-            f"💳 Оплатите счет по ссылке ниже:\n"
-            f"{invoice.bot_invoice_url}\n\n"
-            f"📤 Средства будут отправлены на адрес:\n"
-            f"<code>{wallet_address}</code>\n\n"
-            f"⏱ После оплаты средства поступят в течение нескольких минут.",
-            parse_mode=ParseMode.HTML,
-            reply_markup=get_invoice_keyboard(invoice.bot_invoice_url)
+        check_text = (
+            "<b>✅ Вывод успешно выполнен!</b>\n\n"
+            f"<b>Вот ваш чек на {amount_to_withdraw} USDT:</b>\n"
+            f"{check.bot_check_url}\n\n"
+            "💡 Нажмите кнопку ниже, чтобы активировать чек и получить средства"
         )
+        await call.message.edit_text(
+            check_text, 
+            parse_mode=ParseMode.HTML, 
+            reply_markup=get_check_keyboard(check.bot_check_url)
+        )
+        await call.answer()
         
     except Exception as e:
-        logging.error(f"Ошибка вывода: {e}")
-        await refund_balance(message.from_user.id, amount_to_withdraw)
-        await message.answer(
-            f"❌ Ошибка вывода: {str(e)}\n"
-            f"Средства возвращены на баланс.",
-            parse_mode=ParseMode.HTML
-        )
-    
-    await state.clear()
-
-# Обработчик отмены
-@dp.message(Command("cancel"))
-async def cancel_withdraw(message: Message, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state is None:
-        await message.answer("Нет активных действий для отмены.")
-        return
-    
-    await state.clear()
-    await message.answer("✅ Действие отменено.", parse_mode=ParseMode.HTML)
+        logging.error(f"Ошибка вывода у юзера {call.from_user.id}: {e}")
+        await refund_balance(call.from_user.id, amount_to_withdraw)
+        await call.answer("❌ Ошибка казны, попробуйте позже. Средства возвращены на баланс.", show_alert=True)
 
 
 # -------------------------------------------------------------
