@@ -74,19 +74,17 @@ async def add_message_reward(user_id: int):
         await db.commit()
 
 async def deduct_balance(user_id: int, amount: float) -> bool:
-    """Безопасное списание средств с проверкой баланса"""
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
             user = await cursor.fetchone()
             if not user or user[0] < amount:
-                return False  # Недостаточно средств
+                return False
         
         await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (amount, user_id))
         await db.commit()
         return True
 
 async def refund_balance(user_id: int, amount: float):
-    """Возврат средств, если API выдал ошибку"""
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
         await db.commit()
@@ -103,16 +101,17 @@ async def get_db_stats():
 # -------------------------------------------------------------
 # ТЕКСТЫ И КЛАВИАТУРЫ
 # -------------------------------------------------------------
+# Убрал тег blockquote, чтобы не было визуальных багов.
 START_TEXT = (
     "<b>👋 Добро пожаловать в Sparta Cash!\n\n"
-    "💸 Зарабатывай кэш просто общаясь у нас в чате!</b>\n\n"
-    "<blockquote><b>🎯 Как участвовать:\n"
-    "1️⃣ Добавь в био: @Sparta_cash — место где зарабатывают деньги!\n"
-    "2️⃣ Общайся в чатах из нашего списка\n"
-    "3️⃣  Награда — 0,24$ за 1000 сообщений 🥰</b></blockquote>\n\n"
+    "💸 Зарабатывай кэш, просто общаясь у нас в чате!</b>\n\n"
+    "<b>🎯 Как участвовать:</b>\n"
+    "<b>1️⃣ Добавь в био:</b> <code>@Sparta_cash — место где зарабатывают деньги!</code>\n"
+    "<b>2️⃣ Общайся в чатах из нашего списка</b>\n"
+    "<b>3️⃣ Награда — 0,24$ за 1000 сообщений 🥰</b>\n\n"
     "<b>💰 Выплаты осуществляются мгновенно на @send \n"
     "🔓 Вывод — от 0.10$\n\n"
-    "⚠️ Важно :\n"
+    "⚠️ Важно:\n"
     "Допустима только приписка @Sparta_cash\n\n"
     "🏆 Оплата за 1 сообщение - 0.00024$</b>"
 )
@@ -129,6 +128,7 @@ def get_main_keyboard():
     ])
 
 def get_profile_keyboard():
+    # Строго две кнопки, одна под другой
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💸 Вывод", callback_data="withdraw")],
         [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
@@ -307,13 +307,11 @@ async def handle_withdraw(call: CallbackQuery, state: FSMContext):
 
     amount_to_withdraw = round(balance, 6)
     
-    # 1. ЗАЩИТА ОТ ДАБЛ СПЕНДА (Сначала списываем)
     success = await deduct_balance(call.from_user.id, amount_to_withdraw)
     if not success:
         await call.answer("❌ Ошибка списания баланса", show_alert=True)
         return
     
-    # 2. Только после списания создаем чек
     try:
         check = await cryptopay.create_check(asset="USDT", amount=amount_to_withdraw)
         
@@ -330,7 +328,6 @@ async def handle_withdraw(call: CallbackQuery, state: FSMContext):
         await call.answer()
         
     except Exception as e:
-        # 3. Если произошла ошибка (нет денег в казне и тд) — ВОЗВРАЩАЕМ средства
         logging.error(f"Ошибка вывода у юзера {call.from_user.id}: {e}")
         await refund_balance(call.from_user.id, amount_to_withdraw)
         await call.answer("❌ Ошибка казны, попробуйте позже. Средства возвращены на баланс.", show_alert=True)
@@ -342,7 +339,6 @@ async def handle_withdraw(call: CallbackQuery, state: FSMContext):
 async def check_user_bio(user_id: int) -> bool:
     current_time = time.time()
     
-    # Очистка кэша, чтобы не кончилась ОЗУ сервера
     if len(bio_cache) > 5000:
         bio_cache.clear()
         
@@ -369,7 +365,6 @@ async def track_group_messages(message: Message):
     user_id = message.from_user.id
     current_time = time.time()
     
-    # Защита памяти
     if len(user_cooldowns) > 5000:
         user_cooldowns.clear()
 
@@ -388,7 +383,7 @@ async def track_group_messages(message: Message):
 async def main():
     await init_db()
     logging.basicConfig(level=logging.INFO)
-    print("🚀 Бот Sparta Cash успешно запущен (Без багов и с защитой)!")
+    print("🚀 Бот Sparta Cash успешно запущен!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
