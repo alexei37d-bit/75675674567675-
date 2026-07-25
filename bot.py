@@ -14,7 +14,7 @@ from aiocryptopay import AioCryptoPay, Networks
 # -------------------------------------------------------------
 # НАСТРОЙКИ
 # -------------------------------------------------------------
-TOKEN = "8831174244:AAHL_uTfgQEA4zaPsp3UkhHjv5ePb2rn8xE"
+TOKEN = "8829468133:AAFKB7SOH7pERK0TWfw3T_AroQoK6kCTij0"
 CRYPTO_TOKEN = "613373:AAMtHeqDU9uXDRpfGSSw5g4KNRHeuouK5X2"
 ADMIN_ID = 7921743592
 
