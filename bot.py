@@ -14,7 +14,7 @@ from aiocryptopay import AioCryptoPay, Networks
 # -------------------------------------------------------------
 # НАСТРОЙКИ
 # -------------------------------------------------------------
-TOKEN = "8829468133:AAFKB7SOH7pERK0TWfw3T_AroQoK6kCTij0"
+TOKEN = "8831174244:AAHL_uTfgQEA4zaPsp3UkhHjv5ePb2rn8xE"
 CRYPTO_TOKEN = "613373:AAMtHeqDU9uXDRpfGSSw5g4KNRHeuouK5X2"
 ADMIN_ID = 7921743592
 
@@ -36,6 +36,8 @@ bio_cache = {}
 class AdminStates(StatesGroup):
     waiting_for_topup = State()
     waiting_for_withdraw = State()
+    waiting_for_accrual_id = State()
+    waiting_for_accrual_amount = State()
 
 
 # -------------------------------------------------------------
@@ -73,6 +75,16 @@ async def add_message_reward(user_id: int):
         """, (user_id, REWARD_PER_MESSAGE, REWARD_PER_MESSAGE))
         await db.commit()
 
+async def add_user_balance(user_id: int, amount: float):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            INSERT INTO users (user_id, messages_count, balance)
+            VALUES (?, 0, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                balance = balance + ?
+        """, (user_id, amount, amount))
+        await db.commit()
+
 async def deduct_balance(user_id: int, amount: float) -> bool:
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
@@ -101,7 +113,6 @@ async def get_db_stats():
 # -------------------------------------------------------------
 # ТЕКСТЫ И КЛАВИАТУРЫ
 # -------------------------------------------------------------
-# Убрал тег blockquote, чтобы не было визуальных багов.
 START_TEXT = (
     "<b>👋 Добро пожаловать в Sparta Cash!\n\n"
     "💸 Зарабатывай кэш, просто общаясь у нас в чате!</b>\n\n"
@@ -128,7 +139,6 @@ def get_main_keyboard():
     ])
 
 def get_profile_keyboard():
-    # Строго две кнопки, одна под другой
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💸 Вывод", callback_data="withdraw")],
         [InlineKeyboardButton(text="В главное меню ⬅️", callback_data="main_menu")]
@@ -150,6 +160,7 @@ def get_admin_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💰 Пополнить казну", callback_data="admin_topup"),
          InlineKeyboardButton(text="💸 Вывести чеком", callback_data="admin_withdraw")],
+        [InlineKeyboardButton(text="➕ Начислить баланс", callback_data="admin_accrual")],
         [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_users")],
         [InlineKeyboardButton(text="Закрыть ❌", callback_data="admin_close")]
     ])
@@ -162,10 +173,19 @@ def get_admin_keyboard():
 async def admin_panel(message: Message, state: FSMContext):
     await state.clear()
     
+    usdt_balance = "0.0"
     try:
         app_balances = await cryptopay.get_balance()
-        usdt_balance = next((b.available for b in app_balances if b.currency_code == "USDT"), "0.0")
-    except Exception:
+        if isinstance(app_balances, list):
+            for b in app_balances:
+                curr = getattr(b, 'currency_code', None) or getattr(b, 'currency', None)
+                if curr == "USDT":
+                    usdt_balance = str(getattr(b, 'available', getattr(b, 'amount', 0.0)))
+                    break
+        elif hasattr(app_balances, 'available'):
+            usdt_balance = str(app_balances.available)
+    except Exception as e:
+        logging.error(f"Ошибка получения баланса казны: {e}")
         usdt_balance = "Ошибка API"
 
     stats, _ = await get_db_stats()
@@ -199,6 +219,7 @@ async def admin_show_users(call: CallbackQuery, state: FSMContext):
     await call.message.answer(text, parse_mode=ParseMode.HTML)
     await call.answer()
 
+# --- Пополнение казны ---
 @dp.callback_query(F.data == "admin_topup", F.from_user.id == ADMIN_ID)
 async def admin_topup_start(call: CallbackQuery, state: FSMContext):
     await call.message.answer("<b>Введите сумму в USDT, на которую хотите пополнить казну:</b>", parse_mode=ParseMode.HTML)
@@ -221,6 +242,7 @@ async def admin_topup_process(message: Message, state: FSMContext):
     finally:
         await state.clear()
 
+# --- Вывод чеком из казны ---
 @dp.callback_query(F.data == "admin_withdraw", F.from_user.id == ADMIN_ID)
 async def admin_withdraw_start(call: CallbackQuery, state: FSMContext):
     await call.message.answer("<b>Введите сумму в USDT для вывода чеком из казны:</b>", parse_mode=ParseMode.HTML)
@@ -240,6 +262,39 @@ async def admin_withdraw_process(message: Message, state: FSMContext):
         await message.answer("❌ Ошибка: Введите число (например, 1.5)")
     except Exception as e:
         await message.answer(f"❌ Ошибка (возможно в казне не хватает средств): {e}")
+    finally:
+        await state.clear()
+
+# --- Ручное начисление баланса по ID ---
+@dp.callback_query(F.data == "admin_accrual", F.from_user.id == ADMIN_ID)
+async def admin_accrual_start(call: CallbackQuery, state: FSMContext):
+    await call.message.answer("<b>Введите ID пользователя, которому хотите начислить баланс:</b>", parse_mode=ParseMode.HTML)
+    await state.set_state(AdminStates.waiting_for_accrual_id)
+    await call.answer()
+
+@dp.message(AdminStates.waiting_for_accrual_id, F.from_user.id == ADMIN_ID)
+async def admin_accrual_get_id(message: Message, state: FSMContext):
+    try:
+        target_id = int(message.text.strip())
+        await state.update_data(target_user_id=target_id)
+        await message.answer(f"<b>ID <code>{target_id}</code> принят.\nТеперь введите сумму USDT для начисления (например, 1.5):</b>", parse_mode=ParseMode.HTML)
+        await state.set_state(AdminStates.waiting_for_accrual_amount)
+    except ValueError:
+        await message.answer("❌ Ошибка: ID должен состоять только из цифр. Попробуйте снова:")
+
+@dp.message(AdminStates.waiting_for_accrual_amount, F.from_user.id == ADMIN_ID)
+async def admin_accrual_finish(message: Message, state: FSMContext):
+    try:
+        amount = float(message.text.replace(',', '.'))
+        data = await state.get_data()
+        target_id = data.get("target_user_id")
+        
+        await add_user_balance(target_id, amount)
+        await message.answer(f"<b>✅ Успешно! Пользователю <code>{target_id}</code> начислено {amount} USDT.</b>", parse_mode=ParseMode.HTML)
+    except ValueError:
+        await message.answer("❌ Ошибка: Введите число (например, 1.5)")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при начислении: {e}")
     finally:
         await state.clear()
 
