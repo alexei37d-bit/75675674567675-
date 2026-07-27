@@ -61,8 +61,8 @@ async def command_start_handler(message: Message) -> None:
 @dp.message(F.text.in_(["Кошелек", "Баланс", "/wallet", "/balance"]))
 async def wallet_handler(message: Message) -> None:
     text = (
-        '<tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> '
-        "Баланс: <code>0.00</code>$"
+        '<b><tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> '
+        "Баланс: </b><code>0.00</code><b>$</b>"
     )
 
     await message.answer(
