@@ -4,38 +4,36 @@ from aiogram.filters import CommandStart
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, Message
 
 # Твой рабочий токен
-TOKEN = "ТВОЙ_ТОКЕН_БОТА"
+TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
 
 dp = Dispatcher()
 
-# Создаём обычную клавиатуру (внизу экрана)
+# Создаём обычную клавиатуру под полем ввода
+# В text вставляем премиум-эмодзи в формате <tg-emoji emoji-id="..."></tg-emoji>
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [
             KeyboardButton(
-                text='<tg-emoji emoji-id="5472419592217332357">👛</tg-emoji> Кошелек'
+                text='<tg-emoji emoji-id="5197686464325915345">👛</tg-emoji> Кошелек'
             ),
             KeyboardButton(
-                text='<tg-emoji emoji-id="5472419592217332357">🎮</tg-emoji> Играть'
+                text='<tg-emoji emoji-id="5471895876790161593">🎮</tg-emoji> Играть'
             ),
             KeyboardButton(
-                text='<tg-emoji emoji-id="5472419592217332357">📜</tg-emoji> Меню'
+                text='<tg-emoji emoji-id="5469969339144773395">📜</tg-emoji> Меню'
             ),
         ]
     ],
-    resize_keyboard=True,  # Делает кнопки компактными
+    resize_keyboard=True,
 )
 
 
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
-    # Получаем имя пользователя
     user_name = message.from_user.first_name if message.from_user else "Игрок"
 
-    # Экранируем имя и формируем жирный текст с эмодзи
     text = f'<b><tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> Добро пожаловать, {html.quote(user_name)}!</b>'
 
-    # Отправляем сообщение с клавиатурой
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
 
 
