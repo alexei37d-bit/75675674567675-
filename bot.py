@@ -7,7 +7,6 @@ TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
 
 dp = Dispatcher()
 
-# Обычные кнопки внизу экрана с кастомными эмодзи по их ID
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [
