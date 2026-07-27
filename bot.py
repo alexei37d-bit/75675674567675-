@@ -1,12 +1,30 @@
 import asyncio
 from aiogram import Bot, Dispatcher, html
 from aiogram.filters import CommandStart
-from aiogram.types import Message
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, Message
 
-# Тестовый токен
-TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
+# Твой рабочий токен
+TOKEN = "ТВОЙ_ТОКЕН_БОТА"
 
 dp = Dispatcher()
+
+# Создаём обычную клавиатуру (внизу экрана)
+main_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(
+                text='<tg-emoji emoji-id="5472419592217332357">👛</tg-emoji> Кошелек'
+            ),
+            KeyboardButton(
+                text='<tg-emoji emoji-id="5472419592217332357">🎮</tg-emoji> Играть'
+            ),
+            KeyboardButton(
+                text='<tg-emoji emoji-id="5472419592217332357">📜</tg-emoji> Меню'
+            ),
+        ]
+    ],
+    resize_keyboard=True,  # Делает кнопки компактными
+)
 
 
 @dp.message(CommandStart())
@@ -17,8 +35,8 @@ async def command_start_handler(message: Message) -> None:
     # Экранируем имя и формируем жирный текст с эмодзи
     text = f'<b><tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> Добро пожаловать, {html.quote(user_name)}!</b>'
 
-    # Отправляем сообщение
-    await message.answer(text, parse_mode="HTML")
+    # Отправляем сообщение с клавиатурой
+    await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
 
 
 async def main() -> None:
