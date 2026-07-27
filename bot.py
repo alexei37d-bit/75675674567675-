@@ -70,10 +70,8 @@ async def command_start_handler(message: Message) -> None:
 async def wallet_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
 
-    # Получаем баланс пользователя (или 0.00, если пользователя ещё нет)
     balance = user_balances.get(user_id, 0.00)
 
-    # Весь текст жирный, а значение баланса в <code> для копирования по клику
     text = (
         f'<b><tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> '
         f'Баланс: </b><code>{balance:.2f}</code><b>$</b>'
@@ -83,6 +81,24 @@ async def wallet_handler(message: Message) -> None:
         text=text,
         parse_mode="HTML",
         reply_markup=wallet_inline_keyboard,
+    )
+
+
+# Новый обработчик для кнопки "Играть"
+@dp.message(F.text.in_(["Играть", "/play"]))
+async def play_handler(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    balance = user_balances.get(user_id, 0.00)
+
+    # Весь текст полностью жирный с твоими кастомными эмодзи
+    text = (
+        '<b><tg-emoji emoji-id="5463225256942539355">🚀</tg-emoji> Выберите игру для ставки !\n\n\n'
+        f'<tg-emoji emoji-id="5197422813463483902">💵</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b>$</b>'
+    )
+
+    await message.answer(
+        text=text,
+        parse_mode="HTML",
     )
 
 
