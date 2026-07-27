@@ -4,7 +4,7 @@ from aiogram.filters import CommandStart
 from aiogram.types import Message
 
 # Тестовый токен
-TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP6BI"
+TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
 
 dp = Dispatcher()
 
