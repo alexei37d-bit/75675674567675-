@@ -1,4 +1,1 @@
 aiogram>=3.0.0
-aiocryptopay
-aiosqlite
-python-dotenv
