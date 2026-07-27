@@ -1,30 +1,31 @@
 import asyncio
 from aiogram import Bot, Dispatcher, html
 from aiogram.filters import CommandStart
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, Message
 
-TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
+TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP6BI"
 
 dp = Dispatcher()
 
-# Кнопки с твоими tg-emoji тегами и emoji-id
-main_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
+# Обычные кнопки внизу экрана с кастомными эмодзи по их ID
+main_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
         [
-            InlineKeyboardButton(
-                text='<tg-emoji emoji-id="5197686464325915345">👛</tg-emoji> Кошелек',
-                callback_data="wallet",
+            KeyboardButton(
+                text="Кошелек",
+                icon_custom_emoji_id="5197686464325915345"
             ),
-            InlineKeyboardButton(
-                text='<tg-emoji emoji-id="5471895876790161593">🎮</tg-emoji> Играть',
-                callback_data="play",
+            KeyboardButton(
+                text="Играть",
+                icon_custom_emoji_id="5471895876790161593"
             ),
-            InlineKeyboardButton(
-                text='<tg-emoji emoji-id="5469969339144773395">📜</tg-emoji> Меню',
-                callback_data="menu",
+            KeyboardButton(
+                text="Меню",
+                icon_custom_emoji_id="5469969339144773395"
             ),
         ]
-    ]
+    ],
+    resize_keyboard=True,
 )
 
 
