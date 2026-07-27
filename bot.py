@@ -1,30 +1,30 @@
 import asyncio
 from aiogram import Bot, Dispatcher, html
 from aiogram.filters import CommandStart
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, Message
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-# Твой рабочий токен
-TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
+TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP6BI"
 
 dp = Dispatcher()
 
-# Создаём обычную клавиатуру под полем ввода
-# В text вставляем премиум-эмодзи в формате <tg-emoji emoji-id="..."></tg-emoji>
-main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[
+# Кнопки с твоими tg-emoji тегами и emoji-id
+main_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
         [
-            KeyboardButton(
-                text='<tg-emoji emoji-id="5197686464325915345">👛</tg-emoji> Кошелек'
+            InlineKeyboardButton(
+                text='<tg-emoji emoji-id="5197686464325915345">👛</tg-emoji> Кошелек',
+                callback_data="wallet",
             ),
-            KeyboardButton(
-                text='<tg-emoji emoji-id="5471895876790161593">🎮</tg-emoji> Играть'
+            InlineKeyboardButton(
+                text='<tg-emoji emoji-id="5471895876790161593">🎮</tg-emoji> Играть',
+                callback_data="play",
             ),
-            KeyboardButton(
-                text='<tg-emoji emoji-id="5469969339144773395">📜</tg-emoji> Меню'
+            InlineKeyboardButton(
+                text='<tg-emoji emoji-id="5469969339144773395">📜</tg-emoji> Меню',
+                callback_data="menu",
             ),
         ]
-    ],
-    resize_keyboard=True,
+    ]
 )
 
 
