@@ -13,6 +13,8 @@ TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
 
 dp = Dispatcher()
 
+# Словарь для хранения балансов пользователей (по умолчанию 0.00)
+user_balances = {}
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
@@ -52,7 +54,13 @@ wallet_inline_keyboard = InlineKeyboardMarkup(
 
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
     user_name = message.from_user.first_name if message.from_user else "Игрок"
+
+    # Инициализируем баланс 0.00 для нового пользователя
+    if user_id not in user_balances:
+        user_balances[user_id] = 0.00
+
     text = f'<b><tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> Добро пожаловать, {html.quote(user_name)}!</b>'
 
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
@@ -60,9 +68,15 @@ async def command_start_handler(message: Message) -> None:
 
 @dp.message(F.text.in_(["Кошелек", "Баланс", "/wallet", "/balance"]))
 async def wallet_handler(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+
+    # Получаем баланс пользователя (или 0.00, если пользователя ещё нет)
+    balance = user_balances.get(user_id, 0.00)
+
+    # Весь текст жирный, а значение баланса в <code> для копирования по клику
     text = (
-        '<b><tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> '
-        "Баланс: </b><code>0.00</code><b>$</b>"
+        f'<b><tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> '
+        f'Баланс: </b><code>{balance:.2f}</code><b>$</b>'
     )
 
     await message.answer(
