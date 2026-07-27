@@ -74,7 +74,7 @@ async def wallet_handler(message: Message) -> None:
 
     text = (
         f'<b><tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> '
-        f'Баланс: </b><code>{balance:.2f}</code><b>$</b>'
+        f'Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
 
     await message.answer(
@@ -90,10 +90,9 @@ async def play_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
     balance = user_balances.get(user_id, 0.00)
 
-    # Весь текст полностью жирный с твоими кастомными эмодзи
     text = (
         '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n\n'
-        f'<tg-emoji emoji-id="5197422813463483902">💵</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b>$</b>'
+        f'<tg-emoji emoji-id="5197422813463483902">💵</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
 
     await message.answer(
@@ -110,7 +109,7 @@ async def menu_handler(message: Message) -> None:
 
     text = (
         '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
-        f'Баланс: <tg-emoji emoji-id="5197434882321567830">💵</tg-emoji> </b><code>{balance:.2f}</code><b>$</b>'
+        f'Баланс: <tg-emoji emoji-id="5197434882321567830">💵</tg-emoji> </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
 
     await message.answer(
