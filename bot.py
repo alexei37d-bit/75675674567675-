@@ -254,7 +254,7 @@ def build_game_keyboard(
 
 # Небольшие множители (иксы)
 def calculate_multiplier(mines_count: int, opened_count: int) -> float:
-    base = 1.0 + (mines_count * 0.03)
+    base = 1.0 + (mines_count * 0.05)
     mult = base**opened_count
     return max(round(mult, 2), 1.01)
 
