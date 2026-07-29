@@ -530,9 +530,12 @@ async def menu_handler(message: Message) -> None:
     balance = get_user_balance(user_id)
 
     text = (
-    '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n'
-    f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
-)
+
+        '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
+
+        f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+
+    ) 
     await message.answer(
         text=text, parse_mode="HTML", reply_markup=menu_inline_keyboard
     )
@@ -593,10 +596,10 @@ async def play_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
     balance = get_user_balance(user_id)
 
-    text = (
-        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n\n'
-        f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
-    )
+  text = (
+    '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n'
+    f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+)
     await message.answer(text=text, parse_mode="HTML", reply_markup=games_keyboard)
 
 
