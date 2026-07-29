@@ -1214,7 +1214,7 @@ async def chek_copy_link_handler(call: CallbackQuery) -> None:
     chek_id = call.data.split(":")[1]
     bot_info = await call.bot.get_me()
     check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
-    await call.answer(f"Ссылка скопирована: {check_link}", show_alert=True)
+    await call.answer(check_link, show_alert=False)
 
 
 @dp.callback_query(F.data.startswith("chek_manage:"))
