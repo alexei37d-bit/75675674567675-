@@ -2,6 +2,7 @@ import asyncio
 import random
 import string
 from aiogram import Bot, Dispatcher, F, html
+from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
@@ -51,6 +52,7 @@ class ChekState(StatesGroup):
     waiting_for_activations = State()
     waiting_for_password = State()
     waiting_for_check_pass_input = State()
+    waiting_for_target_user = State()
 
 
 FIELD_SIZE = 25
@@ -232,6 +234,14 @@ def get_chek_amount_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
+    chek = created_cheks.get(chek_id, {})
+    if chek.get("target_user"):
+        pin_btn_text = "Открепить"
+        pin_cbd = f"chek_unpin_user:{chek_id}"
+    else:
+        pin_btn_text = "Закрепить за пользователем"
+        pin_cbd = f"chek_pin_user:{chek_id}"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -244,6 +254,13 @@ def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
                     icon_custom_emoji_id="5377535110289576661",
                     callback_data=f"chek_copy_link:{chek_id}",
                 ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=pin_btn_text,
+                    icon_custom_emoji_id="5197269100878907942",
+                    callback_data=pin_cbd,
+                )
             ],
             [
                 InlineKeyboardButton(
@@ -727,6 +744,14 @@ async def open_cheks_menu_handler(call: CallbackQuery, state: FSMContext) -> Non
 async def chek_create_start_handler(
     call: CallbackQuery, state: FSMContext
 ) -> None:
+    if call.message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
+        await call.answer()
+        await call.message.answer(
+            "<b>Перейдите в личные сообщения с ботом <tg-emoji emoji-id=\"5312140414982071786\">❌</tg-emoji></b>",
+            parse_mode="HTML"
+        )
+        return
+
     user_id = call.from_user.id
     balance = get_user_balance(user_id)
 
@@ -785,6 +810,13 @@ async def process_chek_quick_amount(
 async def process_chek_amount_input(
     message: Message, state: FSMContext
 ) -> None:
+    if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
+        await message.answer(
+            "<b>Перейдите в личные сообщения с ботом <tg-emoji emoji-id=\"5312140414982071786\">❌</tg-emoji></b>",
+            parse_mode="HTML"
+        )
+        return
+
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
 
@@ -823,6 +855,13 @@ async def process_chek_amount_input(
 async def process_chek_activations_input(
     message: Message, state: FSMContext
 ) -> None:
+    if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
+        await message.answer(
+            "<b>Перейдите в личные сообщения с ботом <tg-emoji emoji-id=\"5312140414982071786\">❌</tg-emoji></b>",
+            parse_mode="HTML"
+        )
+        return
+
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
     data = await state.get_data()
@@ -847,12 +886,13 @@ async def process_chek_activations_input(
             "password": None,
             "only_premium": False,
             "activated_users": set(),
+            "target_user": None,
         }
 
         await state.clear()
 
         bot_info = await message.bot.get_me()
-        check_link = f"t.me/{bot_info.username}?start={chek_id}"
+        check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
 
         if activations == 1:
             title_str = f"Чек на {amount:.2f}$"
@@ -879,7 +919,7 @@ async def process_chek_activations_input(
 async def chek_copy_link_handler(call: CallbackQuery) -> None:
     chek_id = call.data.split(":")[1]
     bot_info = await call.bot.get_me()
-    check_link = f"t.me/{bot_info.username}?start={chek_id}"
+    check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
     await call.answer(f"Ссылка скопирована: {check_link}", show_alert=True)
 
 
@@ -893,7 +933,7 @@ async def chek_manage_handler(call: CallbackQuery) -> None:
         return
 
     bot_info = await call.bot.get_me()
-    check_link = f"t.me/{bot_info.username}?start={chek_id}"
+    check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
 
     amount = chek["amount"]
     activations = chek["activations"]
@@ -902,12 +942,70 @@ async def chek_manage_handler(call: CallbackQuery) -> None:
     else:
         title_str = f"Чек на {amount:.2f}$ на {activations} активаций"
 
+    target_info = f"\nЗакреплен за: {chek['target_user']}" if chek.get("target_user") else ""
+
     text = (
         f'<b><tg-emoji emoji-id="5451807640436903198">🎰</tg-emoji> Управление: {title_str}\n\n'
         f"Ссылка на чек: <code>{check_link}</code>\n"
-        f"Осталось активаций: {chek['rem_activations']}/{activations}</b>"
+        f"Осталось активаций: {chek['rem_activations']}/{activations}{target_info}</b>"
     )
     await safe_edit_message(call, text, get_chek_manage_keyboard(chek_id))
+
+
+@dp.callback_query(F.data.startswith("chek_pin_user:"))
+async def chek_pin_user_start(call: CallbackQuery, state: FSMContext) -> None:
+    chek_id = call.data.split(":")[1]
+    await state.update_data(target_chek_id=chek_id)
+    await state.set_state(ChekState.waiting_for_target_user)
+
+    text = (
+        '<b><tg-emoji emoji-id="5197269100878907942">📌</tg-emoji> Введите @username или ID пользователя, '
+        'за которым нужно закрепить чек:</b>'
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="◀ Назад",
+                    callback_data=f"chek_manage:{chek_id}",
+                )
+            ]
+        ]
+    )
+    await safe_edit_message(call, text, kb)
+
+
+@dp.message(ChekState.waiting_for_target_user)
+async def chek_pin_user_process(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    chek_id = data.get("target_chek_id")
+    chek = created_cheks.get(chek_id)
+
+    if chek:
+        target_val = message.text.strip()
+        if not target_val.startswith("@") and not target_val.isdigit():
+            target_val = f"@{target_val}"
+
+        chek["target_user"] = target_val
+        await state.clear()
+
+        text = f"<b><tg-emoji emoji-id=\"5197269100878907942\">📌</tg-emoji> Чек успешно закреплен за {target_val}!</b>"
+        await message.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=get_chek_manage_keyboard(chek_id),
+        )
+
+
+@dp.callback_query(F.data.startswith("chek_unpin_user:"))
+async def chek_unpin_user_handler(call: CallbackQuery) -> None:
+    chek_id = call.data.split(":")[1]
+    chek = created_cheks.get(chek_id)
+
+    if chek:
+        chek["target_user"] = None
+        await call.answer("Чек откреплен!", show_alert=True)
+        await chek_manage_handler(call)
 
 
 @dp.callback_query(F.data.startswith("chek_limits_menu:"))
@@ -1077,21 +1175,25 @@ async def inline_check_handler(query: InlineQuery) -> None:
         amount_str = str(int(chek["amount"]))
 
     acts = chek["activations"]
-    if acts == 1:
-        act_str = "1 активация"
-    elif 2 <= acts <= 4:
-        act_str = f"{acts} активации"
-    else:
-        act_str = f"{acts} активаций"
+    target_str = f" для {chek['target_user']}" if chek.get("target_user") else ""
 
-    caption_text = f"<b>💸 Чек на {amount_str}$\n{act_str}</b>"
+    if acts == 1:
+        caption_text = f"<b>💸 Чек на {amount_str}${target_str}</b>"
+        desc_str = f"Чек на {amount_str}${target_str}"
+    else:
+        if 2 <= acts <= 4:
+            act_str = f"{acts} активации"
+        else:
+            act_str = f"{acts} активаций"
+        caption_text = f"<b>💸 Чек на {amount_str}${target_str}\n{act_str}</b>"
+        desc_str = f"На {act_str}"
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="Получить",
-                    url=f"t.me/{bot_info.username}?start={chek['id']}",
+                    url=f"https://t.me/{bot_info.username}?start={chek['id']}",
                 )
             ]
         ]
@@ -1100,7 +1202,7 @@ async def inline_check_handler(query: InlineQuery) -> None:
     item = InlineQueryResultArticle(
         id=chek_id,
         title=f"Отправить чек на {amount_str}$",
-        description=f"На {act_str}",
+        description=desc_str,
         input_message_content=InputTextMessageContent(
             message_text=caption_text, parse_mode="HTML"
         ),
@@ -1113,6 +1215,26 @@ async def complete_chek_activation(
     message_or_call, user, chek: dict, state: FSMContext = None
 ) -> None:
     user_id = user.id
+
+    if chek.get("target_user"):
+        target = chek["target_user"].strip()
+        user_uname = f"@{user.username}" if user.username else None
+        user_id_str = str(user_id)
+
+        is_matched = False
+        if target.startswith("@") and user_uname and target.lower() == user_uname.lower():
+            is_matched = True
+        elif target == user_id_str:
+            is_matched = True
+
+        if not is_matched:
+            err_msg = "Чек предназначен для другого игрока!"
+            if isinstance(message_or_call, Message):
+                await message_or_call.answer(f"<b>{err_msg}</b>", parse_mode="HTML")
+            else:
+                await message_or_call.answer(err_msg, show_alert=True)
+            return
+
     chek["rem_activations"] -= 1
     if "activated_users" not in chek:
         chek["activated_users"] = set()
