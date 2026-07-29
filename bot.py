@@ -587,13 +587,295 @@ async def cashout_mines_handler(call: CallbackQuery) -> None:
     del active_games[user_id]
 
 
+# --- АДМИН-ПАНЕЛЬ ---
+ADMIN_IDS = {7921743592}
+
+
+class AdminState(StatesGroup):
+    waiting_for_add_admin = State()
+    waiting_for_add_balance_user = State()
+    waiting_for_add_balance_amount = State()
+    waiting_for_sub_balance_user = State()
+    waiting_for_sub_balance_amount = State()
+    waiting_for_broadcast_text = State()
+
+
+def get_admin_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="➕ Добавить админа", callback_data="admin_add_admin"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💵 Начислить баланс", callback_data="admin_add_balance"
+                ),
+                InlineKeyboardButton(
+                    text="📉 Отнять баланс", callback_data="admin_sub_balance"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="👥 Список пользователей", callback_data="admin_users_list"
+                ),
+                InlineKeyboardButton(
+                    text="📊 Статистика", callback_data="admin_stats"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📢 Рассылка", callback_data="admin_broadcast"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Закрыть", callback_data="admin_close"
+                )
+            ],
+        ]
+    )
+
+
+@dp.message(F.text == "/admin")
+async def admin_panel_handler(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    if user_id not in ADMIN_IDS:
+        return
+
+    await message.answer(
+        "<b>⚙️ Панель администратора:</b>",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard(),
+    )
+
+
+@dp.callback_query(F.data == "admin_close")
+async def admin_close_handler(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+    await state.clear()
+    await call.message.delete()
+
+
+@dp.callback_query(F.data == "admin_add_admin")
+async def admin_add_admin_start(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+    await state.set_state(AdminState.waiting_for_add_admin)
+    await call.message.edit_text(
+        "<b>➕ Введите Telegram ID пользователя, которого хотите сделать админом:</b>",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(AdminState.waiting_for_add_admin)
+async def admin_add_admin_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    try:
+        new_admin_id = int(message.text.strip())
+        ADMIN_IDS.add(new_admin_id)
+        await state.clear()
+        await message.answer(
+            f"<b>✅ Пользователь <code>{new_admin_id}</code> успешно добавлен в список администраторов!</b>",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard(),
+        )
+    except ValueError:
+        await message.answer("<b>❌ Некорректный ID. Введите число:</b>")
+
+
+@dp.callback_query(F.data == "admin_add_balance")
+async def admin_add_balance_start(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+    await state.set_state(AdminState.waiting_for_add_balance_user)
+    await call.message.edit_text(
+        "<b>💵 Введите ID игрока, которому нужно НАЧИСЛИТЬ баланс:</b>",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(AdminState.waiting_for_add_balance_user)
+async def admin_add_balance_user_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    try:
+        target_id = int(message.text.strip())
+        await state.update_data(target_id=target_id)
+        await state.set_state(AdminState.waiting_for_add_balance_amount)
+        await message.answer("<b>💵 Введите сумму для начисления:</b>", parse_mode="HTML")
+    except ValueError:
+        await message.answer("<b>❌ Некорректный ID. Введите число:</b>")
+
+
+@dp.message(AdminState.waiting_for_add_balance_amount)
+async def admin_add_balance_amount_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    try:
+        amount = float(message.text.replace(",", ".").strip())
+        if amount <= 0:
+            raise ValueError
+        data = await state.get_data()
+        target_id = data["target_id"]
+
+        user_balances[target_id] = get_user_balance(target_id) + amount
+        await state.clear()
+        await message.answer(
+            f"<b>✅ Успешно начислено {amount:.2f} $ игроку <code>{target_id}</code>!\n"
+            f"Новый баланс: {user_balances[target_id]:.2f} $</b>",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard(),
+        )
+    except ValueError:
+        await message.answer("<b>❌ Некорректная сумма. Введите положительное число:</b>")
+
+
+@dp.callback_query(F.data == "admin_sub_balance")
+async def admin_sub_balance_start(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+    await state.set_state(AdminState.waiting_for_sub_balance_user)
+    await call.message.edit_text(
+        "<b>📉 Введите ID игрока, у которого нужно ОТНЯТЬ баланс:</b>",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(AdminState.waiting_for_sub_balance_user)
+async def admin_sub_balance_user_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    try:
+        target_id = int(message.text.strip())
+        await state.update_data(target_id=target_id)
+        await state.set_state(AdminState.waiting_for_sub_balance_amount)
+        await message.answer("<b>📉 Введите сумму для списания:</b>", parse_mode="HTML")
+    except ValueError:
+        await message.answer("<b>❌ Некорректный ID. Введите число:</b>")
+
+
+@dp.message(AdminState.waiting_for_sub_balance_amount)
+async def admin_sub_balance_amount_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    try:
+        amount = float(message.text.replace(",", ".").strip())
+        if amount <= 0:
+            raise ValueError
+        data = await state.get_data()
+        target_id = data["target_id"]
+
+        current_bal = get_user_balance(target_id)
+        user_balances[target_id] = max(0.0, current_bal - amount)
+        await state.clear()
+        await message.answer(
+            f"<b>✅ Успешно списано {amount:.2f} $ у игрока <code>{target_id}</code>!\n"
+            f"Новый баланс: {user_balances[target_id]:.2f} $</b>",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard(),
+        )
+    except ValueError:
+        await message.answer("<b>❌ Некорректная сумма. Введите положительное число:</b>")
+
+
+@dp.callback_query(F.data == "admin_users_list")
+async def admin_users_list_handler(call: CallbackQuery) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+
+    if not user_balances:
+        await call.message.edit_text(
+            "<b>👥 Список пользователей пуст.</b>",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard(),
+        )
+        return
+
+    text = "<b>👥 Список пользователей и их балансов:</b>\n\n"
+    for uid, bal in user_balances.items():
+        text += f"• ID: <code>{uid}</code> | Баланс: <code>{bal:.2f} $</code>\n"
+
+    if len(text) > 4000:
+        text = text[:4000] + "\n..."
+
+    await call.message.edit_text(
+        text=text, parse_mode="HTML", reply_markup=get_admin_keyboard()
+    )
+
+
+@dp.callback_query(F.data == "admin_stats")
+async def admin_stats_handler(call: CallbackQuery) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+
+    total_users = len(user_balances)
+    total_balance = sum(user_balances.values())
+    active_games_cnt = len(active_games)
+
+    text = (
+        "<b>📊 Статистика бота:</b>\n\n"
+        f"<b>• Всего пользователей:</b> <code>{total_users}</code>\n"
+        f"<b>• Общая сумма балансов:</b> <code>{total_balance:.2f} $</code>\n"
+        f"<b>• Активных игр сейчас:</b> <code>{active_games_cnt}</code>\n"
+        f"<b>• Администраторов:</b> <code>{len(ADMIN_IDS)}</code>"
+    )
+
+    await call.message.edit_text(
+        text=text, parse_mode="HTML", reply_markup=get_admin_keyboard()
+    )
+
+
+@dp.callback_query(F.data == "admin_broadcast")
+async def admin_broadcast_start(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+    await state.set_state(AdminState.waiting_for_broadcast_text)
+    await call.message.edit_text(
+        "<b>📢 Введите текст для рассылки всем пользователям:</b>",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(AdminState.waiting_for_broadcast_text)
+async def admin_broadcast_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    await state.clear()
+    broadcast_text = message.text
+    success = 0
+    failed = 0
+
+    status_msg = await message.answer("<b>⏳ Рассылка выполняется...</b>", parse_mode="HTML")
+
+    for uid in list(user_balances.keys()):
+        try:
+            await message.bot.send_message(
+                chat_id=uid, text=broadcast_text, parse_mode="HTML"
+            )
+            success += 1
+            await asyncio.sleep(0.05)
+        except Exception:
+            failed += 1
+
+    await status_msg.edit_text(
+        f"<b>📢 Рассылка завершена!</b>\n\n"
+        f"<b>✅ Успешно доставлено:</b> {success}\n"
+        f"<b>❌ Не доставлено:</b> {failed}",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard(),
+    )
+
+
 async def main() -> None:
     bot = Bot(token=TOKEN)
     print("Бот запущен!")
     await dp.start_polling(bot)
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
 if __name__ == "__main__":
     asyncio.run(main())
