@@ -203,7 +203,7 @@ def get_preview_game_keyboard(user_id: int) -> InlineKeyboardMarkup:
                 text=f"💣 Мин: {mines}", callback_data="screen_choose_mines"
             ),
             InlineKeyboardButton(
-                text="◀ Ставка", callback_data="mines_choose_bet"
+                text="◀ Назад", callback_data="mines_choose_bet"
             ),
         ]
     )
@@ -298,7 +298,7 @@ def build_game_keyboard(
                     text="🔄 Сыграть снова", callback_data="screen_game_confirm"
                 ),
                 InlineKeyboardButton(
-                    text="◀ Меню", callback_data="mines_choose_bet"
+                    text="◀ Назад", callback_data="mines_choose_bet"
                 ),
             ]
         )
