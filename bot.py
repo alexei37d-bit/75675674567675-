@@ -24,13 +24,13 @@ user_balances = {}
 # Оборот пользователей (по умолчанию 0.00)
 user_turnover = {}
 
-# Активные игры: user_id -> dict
+# Активные игры: game_id -> dict
 active_games = {}
 
 # Параметры ставок перед игрой: user_id -> dict
 game_settings = {}
 
-# Активные игры в Башню: user_id -> dict
+# Активные игры в Башню: game_id -> dict
 active_tower_games = {}
 
 # Параметры ставок для Башни: user_id -> dict
@@ -176,23 +176,23 @@ games_keyboard = InlineKeyboardMarkup(
 
 
 # ЭКРАН 1: Выбор ставки
-def get_bet_selection_keyboard() -> InlineKeyboardMarkup:
+def get_bet_selection_keyboard(owner_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="0.1$", callback_data="select_bet_0.1"
+                    text="0.1$", callback_data=f"select_bet_0.1:{owner_id}"
                 ),
                 InlineKeyboardButton(
-                    text="0.5$", callback_data="select_bet_0.5"
+                    text="0.5$", callback_data=f"select_bet_0.5:{owner_id}"
                 ),
                 InlineKeyboardButton(
-                    text="1$", callback_data="select_bet_1.0"
+                    text="1$", callback_data=f"select_bet_1.0:{owner_id}"
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="◀ Назад", callback_data="back_to_games"
+                    text="◀ Назад", callback_data=f"back_to_games:{owner_id}"
                 )
             ],
         ]
@@ -200,7 +200,9 @@ def get_bet_selection_keyboard() -> InlineKeyboardMarkup:
 
 
 # ЭКРАН 2: Поле с лунами 🌑 до начала игры
-def get_preview_game_keyboard(user_id: int) -> InlineKeyboardMarkup:
+def get_preview_game_keyboard(user_id: int, owner_id: int = None) -> InlineKeyboardMarkup:
+    if owner_id is None:
+        owner_id = user_id
     st = get_game_settings(user_id)
     bet = st["bet"]
     mines = st["mines"]
@@ -218,17 +220,17 @@ def get_preview_game_keyboard(user_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text=f"Играть {bet:.2f}",
                 icon_custom_emoji_id="5305445793623218874",
-                callback_data="start_mines_game",
+                callback_data=f"start_mines_game:{owner_id}",
             )
         ]
     )
     keyboard.append(
         [
             InlineKeyboardButton(
-                text=f"💣 Мин: {mines}", callback_data="screen_choose_mines"
+                text=f"💣 Мин: {mines}", callback_data=f"screen_choose_mines:{owner_id}"
             ),
             InlineKeyboardButton(
-                text="◀ Ставка", callback_data="mines_choose_bet"
+                text="◀ Ставка", callback_data=f"mines_choose_bet:{owner_id}"
             ),
         ]
     )
@@ -237,37 +239,37 @@ def get_preview_game_keyboard(user_id: int) -> InlineKeyboardMarkup:
 
 
 # ЭКРАН 3: Выбор количества мин
-def get_mines_count_keyboard() -> InlineKeyboardMarkup:
+def get_mines_count_keyboard(owner_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="2", callback_data="set_mines_cnt_2"
+                    text="2", callback_data=f"set_mines_cnt_2:{owner_id}"
                 ),
                 InlineKeyboardButton(
-                    text="3", callback_data="set_mines_cnt_3"
+                    text="3", callback_data=f"set_mines_cnt_3:{owner_id}"
                 ),
                 InlineKeyboardButton(
-                    text="5", callback_data="set_mines_cnt_5"
+                    text="5", callback_data=f"set_mines_cnt_5:{owner_id}"
                 ),
                 InlineKeyboardButton(
-                    text="10", callback_data="set_mines_cnt_10"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="15", callback_data="set_mines_cnt_15"
-                ),
-                InlineKeyboardButton(
-                    text="20", callback_data="set_mines_cnt_20"
-                ),
-                InlineKeyboardButton(
-                    text="24", callback_data="set_mines_cnt_24"
+                    text="10", callback_data=f"set_mines_cnt_10:{owner_id}"
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="◀ Назад", callback_data="screen_game_confirm"
+                    text="15", callback_data=f"set_mines_cnt_15:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="20", callback_data=f"set_mines_cnt_20:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="24", callback_data=f"set_mines_cnt_24:{owner_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="◀ Назад", callback_data=f"screen_game_confirm:{owner_id}"
                 )
             ],
         ]
@@ -282,6 +284,8 @@ def build_game_keyboard(
     opened = game_data["opened"]
     game_over = game_data["game_over"]
     mines_positions = game_data["mines_positions"]
+    game_id = game_data.get("game_id", game_data.get("owner_id"))
+    owner_id = game_data["owner_id"]
 
     for row in range(5):
         row_buttons = []
@@ -299,7 +303,7 @@ def build_game_keyboard(
 
             row_buttons.append(
                 InlineKeyboardButton(
-                    text=text, callback_data=f"open_cell_{idx}"
+                    text=text, callback_data=f"open_cell_{idx}:{game_id}"
                 )
             )
         keyboard.append(row_buttons)
@@ -311,7 +315,7 @@ def build_game_keyboard(
                 InlineKeyboardButton(
                     text=f"Забрать {current_win:.2f}",
                     icon_custom_emoji_id="5305445793623218874",
-                    callback_data="cashout_mines",
+                    callback_data=f"cashout_mines:{game_id}",
                 )
             ]
         )
@@ -320,10 +324,10 @@ def build_game_keyboard(
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    text="🔄 Сыграть снова", callback_data="screen_game_confirm"
+                    text="🔄 Сыграть снова", callback_data=f"screen_game_confirm:{owner_id}"
                 ),
                 InlineKeyboardButton(
-                    text="◀ Меню", callback_data="mines_choose_bet"
+                    text="◀ Меню", callback_data=f"mines_choose_bet:{owner_id}"
                 ),
             ]
         )
@@ -357,21 +361,23 @@ def calculate_tower_multiplier(traps_count: int, floor: int) -> float:
     mult = (5 / safe_count) ** floor
     return max(round(mult, 2), 1.01)
 
-def get_tower_bet_selection_keyboard() -> InlineKeyboardMarkup:
+def get_tower_bet_selection_keyboard(owner_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="0.1$", callback_data="select_tower_bet_0.1"),
-                InlineKeyboardButton(text="0.5$", callback_data="select_tower_bet_0.5"),
-                InlineKeyboardButton(text="1$", callback_data="select_tower_bet_1.0"),
+                InlineKeyboardButton(text="0.1$", callback_data=f"select_tower_bet_0.1:{owner_id}"),
+                InlineKeyboardButton(text="0.5$", callback_data=f"select_tower_bet_0.5:{owner_id}"),
+                InlineKeyboardButton(text="1$", callback_data=f"select_tower_bet_1.0:{owner_id}"),
             ],
             [
-                InlineKeyboardButton(text="◀ Назад", callback_data="back_to_games")
+                InlineKeyboardButton(text="◀ Назад", callback_data=f"back_to_games:{owner_id}")
             ],
         ]
     )
 
-def get_preview_tower_keyboard(user_id: int) -> InlineKeyboardMarkup:
+def get_preview_tower_keyboard(user_id: int, owner_id: int = None) -> InlineKeyboardMarkup:
+    if owner_id is None:
+        owner_id = user_id
     st = get_tower_settings(user_id)
     bet = st["bet"]
     traps = st["traps"]
@@ -389,34 +395,34 @@ def get_preview_tower_keyboard(user_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text=f"Играть {bet:.2f}",
                 icon_custom_emoji_id="5305445793623218874",
-                callback_data="start_tower_game",
+                callback_data=f"start_tower_game:{owner_id}",
             )
         ]
     )
     keyboard.append(
         [
             InlineKeyboardButton(
-                text=f"💣 Мин: {traps}", callback_data="screen_choose_tower_traps"
+                text=f"💣 Мин: {traps}", callback_data=f"screen_choose_tower_traps:{owner_id}"
             ),
             InlineKeyboardButton(
-                text="◀ Ставка", callback_data="tower_choose_bet"
+                text="◀ Ставка", callback_data=f"tower_choose_bet:{owner_id}"
             ),
         ]
     )
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-def get_tower_traps_count_keyboard() -> InlineKeyboardMarkup:
+def get_tower_traps_count_keyboard(owner_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="1", callback_data="set_tower_traps_cnt_1"),
-                InlineKeyboardButton(text="2", callback_data="set_tower_traps_cnt_2"),
-                InlineKeyboardButton(text="3", callback_data="set_tower_traps_cnt_3"),
-                InlineKeyboardButton(text="4", callback_data="set_tower_traps_cnt_4"),
+                InlineKeyboardButton(text="1", callback_data=f"set_tower_traps_cnt_1:{owner_id}"),
+                InlineKeyboardButton(text="2", callback_data=f"set_tower_traps_cnt_2:{owner_id}"),
+                InlineKeyboardButton(text="3", callback_data=f"set_tower_traps_cnt_3:{owner_id}"),
+                InlineKeyboardButton(text="4", callback_data=f"set_tower_traps_cnt_4:{owner_id}"),
             ],
             [
-                InlineKeyboardButton(text="◀ Назад", callback_data="screen_tower_game_confirm")
+                InlineKeyboardButton(text="◀ Назад", callback_data=f"screen_tower_game_confirm:{owner_id}")
             ],
         ]
     )
@@ -428,6 +434,8 @@ def build_tower_game_keyboard(game_data: dict, finished: bool = False) -> Inline
     game_over = game_data["game_over"]
     trap_positions = game_data["trap_positions"]
     traps_count = game_data["traps_count"]
+    game_id = game_data.get("game_id", game_data.get("owner_id"))
+    owner_id = game_data["owner_id"]
 
     # Идет СВЕРХУ ВНИЗ (0 - верхний ряд, 7 - нижний ряд)
     for floor_idx in range(TOWER_FLOORS):
@@ -465,7 +473,7 @@ def build_tower_game_keyboard(game_data: dict, finished: bool = False) -> Inline
                 cbd = "locked_cell"
             elif is_active_row:
                 text = "🌑"
-                cbd = f"open_tower_{floor_idx}_{col}"
+                cbd = f"open_tower_{floor_idx}_{col}:{game_id}"
             else:
                 text = "🌑"
                 cbd = "locked_cell"
@@ -480,7 +488,7 @@ def build_tower_game_keyboard(game_data: dict, finished: bool = False) -> Inline
                 InlineKeyboardButton(
                     text=f"Забрать {current_win:.2f}",
                     icon_custom_emoji_id="5305445793623218874",
-                    callback_data="cashout_tower",
+                    callback_data=f"cashout_tower:{game_id}",
                 )
             ]
         )
@@ -489,10 +497,10 @@ def build_tower_game_keyboard(game_data: dict, finished: bool = False) -> Inline
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    text="🔄 Сыграть снова", callback_data="screen_tower_game_confirm"
+                    text="🔄 Сыграть снова", callback_data=f"screen_tower_game_confirm:{owner_id}"
                 ),
                 InlineKeyboardButton(
-                    text="◀ Меню", callback_data="tower_choose_bet"
+                    text="◀ Меню", callback_data=f"tower_choose_bet:{owner_id}"
                 ),
             ]
         )
@@ -511,19 +519,31 @@ async def safe_edit_message(call: CallbackQuery, text: str, reply_markup: Inline
             raise e
 
 
+def check_owner(call: CallbackQuery, owner_id: int) -> bool:
+    if call.from_user.id != owner_id:
+        return False
+    return True
+
+
 @dp.callback_query(F.data == "locked_cell")
 async def locked_cell_handler(call: CallbackQuery) -> None:
     await call.answer()
 
 
-@dp.callback_query(F.data == "mines_choose_bet")
+@dp.callback_query(F.data.startswith("mines_choose_bet"))
 async def mines_choose_bet_handler(call: CallbackQuery, state: FSMContext) -> None:
+    parts = call.data.split(":")
+    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     await state.set_state(MinesState.waiting_for_custom_bet)
     text = (
         '<b><tg-emoji emoji-id="5451754391432366821">💰</tg-emoji> Выберите ставку:\n'
         'Или напишите сумму ставки в чат</b>'
     )
-    await safe_edit_message(call, text, get_bet_selection_keyboard())
+    await safe_edit_message(call, text, get_bet_selection_keyboard(owner_id))
 
 
 @dp.message(CommandStart())
@@ -615,8 +635,14 @@ async def play_handler(message: Message) -> None:
     await message.answer(text=text, parse_mode="HTML", reply_markup=games_keyboard)
 
 
-@dp.callback_query(F.data == "back_to_games")
+@dp.callback_query(F.data.startswith("back_to_games"))
 async def back_to_games_handler(call: CallbackQuery, state: FSMContext) -> None:
+    parts = call.data.split(":")
+    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     await state.clear()
     user_id = call.from_user.id
     balance = get_user_balance(user_id)
@@ -629,9 +655,15 @@ async def back_to_games_handler(call: CallbackQuery, state: FSMContext) -> None:
 
 @dp.callback_query(F.data.startswith("select_bet_"))
 async def select_bet_quick(call: CallbackQuery, state: FSMContext) -> None:
+    data_parts = call.data.split(":")
+    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     await state.clear()
     user_id = call.from_user.id
-    bet = float(call.data.split("_")[2])
+    bet = float(data_parts[0].split("_")[2])
     st = get_game_settings(user_id)
     st["bet"] = bet
 
@@ -660,14 +692,20 @@ async def process_custom_bet(message: Message, state: FSMContext) -> None:
         await message.answer(
             text=text,
             parse_mode="HTML",
-            reply_markup=get_preview_game_keyboard(user_id),
+            reply_markup=get_preview_game_keyboard(user_id, owner_id=user_id),
         )
     except ValueError:
         await message.answer("❌ Введите корректную сумму (например: 0.4 или 1):")
 
 
-@dp.callback_query(F.data == "screen_game_confirm")
+@dp.callback_query(F.data.startswith("screen_game_confirm"))
 async def screen_game_confirm(call: CallbackQuery, state: FSMContext = None) -> None:
+    parts = call.data.split(":")
+    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     if state:
         await state.clear()
     user_id = call.from_user.id
@@ -679,24 +717,36 @@ async def screen_game_confirm(call: CallbackQuery, state: FSMContext = None) -> 
         f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
         f'<b>Выбрано - {st["mines"]} 💣</b>'
     )
-    await safe_edit_message(call, text, get_preview_game_keyboard(user_id))
+    await safe_edit_message(call, text, get_preview_game_keyboard(user_id, owner_id=owner_id))
 
 
-@dp.callback_query(F.data == "screen_choose_mines")
+@dp.callback_query(F.data.startswith("screen_choose_mines"))
 async def screen_choose_mines(call: CallbackQuery, state: FSMContext) -> None:
+    parts = call.data.split(":")
+    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     await state.set_state(MinesState.waiting_for_custom_mines)
     text = (
         '<b>💣 Выберите количество мин на поле (от 2 до 24):\n'
         'Или напишите количество мин числом в чат</b>'
     )
-    await safe_edit_message(call, text, get_mines_count_keyboard())
+    await safe_edit_message(call, text, get_mines_count_keyboard(owner_id))
 
 
 @dp.callback_query(F.data.startswith("set_mines_cnt_"))
 async def set_mines_count(call: CallbackQuery, state: FSMContext) -> None:
+    data_parts = call.data.split(":")
+    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     await state.clear()
     user_id = call.from_user.id
-    cnt = int(call.data.split("_")[3])
+    cnt = int(data_parts[0].split("_")[3])
     st = get_game_settings(user_id)
     st["mines"] = cnt
 
@@ -724,14 +774,20 @@ async def process_custom_mines(message: Message, state: FSMContext) -> None:
         await message.answer(
             text=text,
             parse_mode="HTML",
-            reply_markup=get_preview_game_keyboard(user_id),
+            reply_markup=get_preview_game_keyboard(user_id, owner_id=user_id),
         )
     except ValueError:
         await message.answer("<b>❌ Пожалуйста, введите целое число от 2 до 24:</b>")
 
 
-@dp.callback_query(F.data == "start_mines_game")
+@dp.callback_query(F.data.startswith("start_mines_game"))
 async def start_mines_game(call: CallbackQuery) -> None:
+    parts = call.data.split(":")
+    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     user_id = call.from_user.id
     balance = get_user_balance(user_id)
     st = get_game_settings(user_id)
@@ -747,7 +803,11 @@ async def start_mines_game(call: CallbackQuery) -> None:
 
     mines_positions = set(random.sample(range(FIELD_SIZE), mines_count))
 
-    active_games[user_id] = {
+    game_id = f"{call.message.chat.id}_{call.message.message_id}"
+
+    active_games[game_id] = {
+        "game_id": game_id,
+        "owner_id": user_id,
         "bet": bet,
         "mines_count": mines_count,
         "mines_positions": mines_positions,
@@ -758,22 +818,33 @@ async def start_mines_game(call: CallbackQuery) -> None:
 
     text = (
         f"<b>💣 Игра началась!\n\n"
+        f"Игрок: {html.quote(call.from_user.full_name)}\n"
         f"Ставка: {bet:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji> | Мин: {mines_count}\n"
         f"Выберите клетку:</b>"
     )
 
-    await safe_edit_message(call, text, build_game_keyboard(active_games[user_id]))
+    await safe_edit_message(call, text, build_game_keyboard(active_games[game_id]))
 
 
 @dp.callback_query(F.data.startswith("open_cell_"))
 async def open_cell_handler(call: CallbackQuery) -> None:
-    user_id = call.from_user.id
-    if user_id not in active_games or active_games[user_id]["game_over"]:
+    data_parts = call.data.split(":")
+    game_id = data_parts[1] if len(data_parts) > 1 else call.from_user.id
+
+    if game_id not in active_games:
         await call.answer("Игра завершена.", show_alert=True)
         return
 
-    cell_idx = int(call.data.split("_")[2])
-    game = active_games[user_id]
+    game = active_games[game_id]
+    if not check_owner(call, game["owner_id"]):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
+    if game["game_over"]:
+        await call.answer("Игра завершена.", show_alert=True)
+        return
+
+    cell_idx = int(data_parts[0].split("_")[2])
 
     if cell_idx in game["opened"]:
         await call.answer()
@@ -788,7 +859,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
             f"Ваша ставка {game['bet']:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji> сгорела.</b>"
         )
         await safe_edit_message(call, text, build_game_keyboard(game, finished=True))
-        del active_games[user_id]
+        del active_games[game_id]
         return
 
     opened_count = len(game["opened"])
@@ -798,13 +869,14 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
     if opened_count == (FIELD_SIZE - game["mines_count"]):
         game["game_over"] = True
+        user_id = game["owner_id"]
         user_balances[user_id] = get_user_balance(user_id) + current_win
         text = (
             f"<b>🎉 Поздравляем! Вы открыли все безопасные клетки!\n\n"
             f"Ваш выигрыш: {current_win:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
         )
         await safe_edit_message(call, text, build_game_keyboard(game, finished=True))
-        del active_games[user_id]
+        del active_games[game_id]
         return
 
     text = (
@@ -815,16 +887,23 @@ async def open_cell_handler(call: CallbackQuery) -> None:
     await safe_edit_message(call, text, build_game_keyboard(game))
 
 
-@dp.callback_query(F.data == "cashout_mines")
+@dp.callback_query(F.data.startswith("cashout_mines"))
 async def cashout_mines_handler(call: CallbackQuery) -> None:
-    user_id = call.from_user.id
-    if user_id not in active_games or active_games[user_id]["game_over"]:
+    parts = call.data.split(":")
+    game_id = parts[1] if len(parts) > 1 else call.from_user.id
+
+    if game_id not in active_games or active_games[game_id]["game_over"]:
         await call.answer("Игра не найдена.", show_alert=True)
         return
 
-    game = active_games[user_id]
+    game = active_games[game_id]
+    if not check_owner(call, game["owner_id"]):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     win_amount = game["current_win"]
     game["game_over"] = True
+    user_id = game["owner_id"]
 
     user_balances[user_id] = get_user_balance(user_id) + win_amount
 
@@ -835,26 +914,38 @@ async def cashout_mines_handler(call: CallbackQuery) -> None:
     )
 
     await safe_edit_message(call, text, build_game_keyboard(game, finished=True))
-    del active_games[user_id]
+    del active_games[game_id]
 
 
 # --- ХЕНДЛЕРЫ ДЛЯ ИГРЫ БАШНЯ ---
 
-@dp.callback_query(F.data == "tower_choose_bet")
+@dp.callback_query(F.data.startswith("tower_choose_bet"))
 async def tower_choose_bet_handler(call: CallbackQuery, state: FSMContext) -> None:
+    parts = call.data.split(":")
+    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     await state.set_state(TowerState.waiting_for_custom_bet)
     text = (
         '<b><tg-emoji emoji-id="5451754391432366821">💰</tg-emoji> Выберите ставку:\n'
         'Или напишите сумму ставки в чат</b>'
     )
-    await safe_edit_message(call, text, get_tower_bet_selection_keyboard())
+    await safe_edit_message(call, text, get_tower_bet_selection_keyboard(owner_id))
 
 
 @dp.callback_query(F.data.startswith("select_tower_bet_"))
 async def select_tower_bet_quick(call: CallbackQuery, state: FSMContext) -> None:
+    data_parts = call.data.split(":")
+    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     await state.clear()
     user_id = call.from_user.id
-    bet = float(call.data.split("_")[3])
+    bet = float(data_parts[0].split("_")[3])
     st = get_tower_settings(user_id)
     st["bet"] = bet
 
@@ -883,14 +974,20 @@ async def process_custom_tower_bet(message: Message, state: FSMContext) -> None:
         await message.answer(
             text=text,
             parse_mode="HTML",
-            reply_markup=get_preview_tower_keyboard(user_id),
+            reply_markup=get_preview_tower_keyboard(user_id, owner_id=user_id),
         )
     except ValueError:
         await message.answer("❌ Введите корректную сумму (например: 0.4 или 1):")
 
 
-@dp.callback_query(F.data == "screen_tower_game_confirm")
+@dp.callback_query(F.data.startswith("screen_tower_game_confirm"))
 async def screen_tower_game_confirm(call: CallbackQuery, state: FSMContext = None) -> None:
+    parts = call.data.split(":")
+    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     if state:
         await state.clear()
     user_id = call.from_user.id
@@ -902,24 +999,36 @@ async def screen_tower_game_confirm(call: CallbackQuery, state: FSMContext = Non
         f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
         f'<b>Выбрано - {st["traps"]} 💣</b>'
     )
-    await safe_edit_message(call, text, get_preview_tower_keyboard(user_id))
+    await safe_edit_message(call, text, get_preview_tower_keyboard(user_id, owner_id=owner_id))
 
 
-@dp.callback_query(F.data == "screen_choose_tower_traps")
+@dp.callback_query(F.data.startswith("screen_choose_tower_traps"))
 async def screen_choose_tower_traps(call: CallbackQuery, state: FSMContext) -> None:
+    parts = call.data.split(":")
+    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     await state.set_state(TowerState.waiting_for_custom_traps)
     text = (
         '<b>💣 Выберите количество мин на ряд (от 1 до 4):\n'
         'Или напишите количество мин числом в чат</b>'
     )
-    await safe_edit_message(call, text, get_tower_traps_count_keyboard())
+    await safe_edit_message(call, text, get_tower_traps_count_keyboard(owner_id))
 
 
 @dp.callback_query(F.data.startswith("set_tower_traps_cnt_"))
 async def set_tower_traps_count(call: CallbackQuery, state: FSMContext) -> None:
+    data_parts = call.data.split(":")
+    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     await state.clear()
     user_id = call.from_user.id
-    cnt = int(call.data.split("_")[4])
+    cnt = int(data_parts[0].split("_")[4])
     st = get_tower_settings(user_id)
     st["traps"] = cnt
 
@@ -947,14 +1056,20 @@ async def process_custom_tower_traps(message: Message, state: FSMContext) -> Non
         await message.answer(
             text=text,
             parse_mode="HTML",
-            reply_markup=get_preview_tower_keyboard(user_id),
+            reply_markup=get_preview_tower_keyboard(user_id, owner_id=user_id),
         )
     except ValueError:
         await message.answer("<b>❌ Пожалуйста, введите целое число от 1 до 4:</b>")
 
 
-@dp.callback_query(F.data == "start_tower_game")
+@dp.callback_query(F.data.startswith("start_tower_game"))
 async def start_tower_game(call: CallbackQuery) -> None:
+    parts = call.data.split(":")
+    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
+    if not check_owner(call, owner_id):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     user_id = call.from_user.id
     balance = get_user_balance(user_id)
     st = get_tower_settings(user_id)
@@ -972,7 +1087,11 @@ async def start_tower_game(call: CallbackQuery) -> None:
     for floor in range(TOWER_FLOORS):
         trap_positions[floor] = set(random.sample(range(5), traps_count))
 
-    active_tower_games[user_id] = {
+    game_id = f"{call.message.chat.id}_{call.message.message_id}"
+
+    active_tower_games[game_id] = {
+        "game_id": game_id,
+        "owner_id": user_id,
         "bet": bet,
         "traps_count": traps_count,
         "trap_positions": trap_positions,
@@ -984,25 +1103,35 @@ async def start_tower_game(call: CallbackQuery) -> None:
 
     text = (
         f"<b><tg-emoji emoji-id=\"5449397725697187601\">🏰</tg-emoji> Игра началась!\n\n"
+        f"Игрок: {html.quote(call.from_user.full_name)}\n"
         f"Ставка: {bet:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji> | Мин в ряду: {traps_count}\n"
         f"Выберите клетку на 1 этаже (в самом верху):</b>"
     )
 
-    await safe_edit_message(call, text, build_tower_game_keyboard(active_tower_games[user_id]))
+    await safe_edit_message(call, text, build_tower_game_keyboard(active_tower_games[game_id]))
 
 
 @dp.callback_query(F.data.startswith("open_tower_"))
 async def open_tower_cell_handler(call: CallbackQuery) -> None:
-    user_id = call.from_user.id
-    if user_id not in active_tower_games or active_tower_games[user_id]["game_over"]:
+    data_parts = call.data.split(":")
+    game_id = data_parts[1] if len(data_parts) > 1 else call.from_user.id
+
+    if game_id not in active_tower_games:
         await call.answer("Игра завершена.", show_alert=True)
         return
 
-    parts = call.data.split("_")
-    floor = int(parts[2])
-    col = int(parts[3])
+    game = active_tower_games[game_id]
+    if not check_owner(call, game["owner_id"]):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
 
-    game = active_tower_games[user_id]
+    if game["game_over"]:
+        await call.answer("Игра завершена.", show_alert=True)
+        return
+
+    sub_parts = data_parts[0].split("_")
+    floor = int(sub_parts[2])
+    col = int(sub_parts[3])
 
     if floor != game["current_floor"]:
         await call.answer("Открывайте этажи по порядку сверху вниз!", show_alert=True)
@@ -1018,7 +1147,7 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
             f"Ваша ставка {game['bet']:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji> сгорела.</b>"
         )
         await safe_edit_message(call, text, build_tower_game_keyboard(game, finished=True))
-        del active_tower_games[user_id]
+        del active_tower_games[game_id]
         return
 
     game["history"][floor] = (col, True)
@@ -1031,13 +1160,14 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
 
     if opened_floors == TOWER_FLOORS:
         game["game_over"] = True
+        user_id = game["owner_id"]
         user_balances[user_id] = get_user_balance(user_id) + current_win
         text = (
             f"<b>🎉 Поздравляем! Вы прошли всю башню!\n\n"
             f"Ваш выигрыш: {current_win:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
         )
         await safe_edit_message(call, text, build_tower_game_keyboard(game, finished=True))
-        del active_tower_games[user_id]
+        del active_tower_games[game_id]
         return
 
     text = (
@@ -1048,16 +1178,23 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
     await safe_edit_message(call, text, build_tower_game_keyboard(game))
 
 
-@dp.callback_query(F.data == "cashout_tower")
+@dp.callback_query(F.data.startswith("cashout_tower"))
 async def cashout_tower_handler(call: CallbackQuery) -> None:
-    user_id = call.from_user.id
-    if user_id not in active_tower_games or active_tower_games[user_id]["game_over"]:
+    parts = call.data.split(":")
+    game_id = parts[1] if len(parts) > 1 else call.from_user.id
+
+    if game_id not in active_tower_games or active_tower_games[game_id]["game_over"]:
         await call.answer("Игра не найдена.", show_alert=True)
         return
 
-    game = active_tower_games[user_id]
+    game = active_tower_games[game_id]
+    if not check_owner(call, game["owner_id"]):
+        await call.answer("Это не ваша игра!", show_alert=True)
+        return
+
     win_amount = game["current_win"]
     game["game_over"] = True
+    user_id = game["owner_id"]
 
     user_balances[user_id] = get_user_balance(user_id) + win_amount
 
@@ -1068,7 +1205,7 @@ async def cashout_tower_handler(call: CallbackQuery) -> None:
     )
 
     await safe_edit_message(call, text, build_tower_game_keyboard(game, finished=True))
-    del active_tower_games[user_id]
+    del active_tower_games[game_id]
 
 
 # --- АДМИН-ПАНЕЛЬ ---
