@@ -1130,7 +1130,7 @@ async def process_chek_amount_input(
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
     except ValueError:
         await message.answer(
-            f"❌ Некорректная сумма! Введите число от 0.01 до {balance:.2f}:"
+            f" <tg-emoji emoji-id=\"5312140414982071786\">❌</tg-emoji> Некорректная сумма! Введите число от 0.01 до {balance:.2f}:"
         )
 
 
@@ -1194,7 +1194,7 @@ async def process_chek_activations_input(
         )
     except ValueError:
         await message.answer(
-            "❌ Некорректное количество активаций или недостаточно средств!"
+            "<tg-emoji emoji-id=\"5312140414982071786\">❌</tg-emoji> Некорректное количество активаций или недостаточно средств!"
         )
 
 
