@@ -10,6 +10,9 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InlineQuery,
+    InlineQueryResultArticle,
+    InputTextMessageContent,
     KeyboardButton,
     Message,
     ReplyKeyboardMarkup,
@@ -47,6 +50,7 @@ class ChekState(StatesGroup):
     waiting_for_amount = State()
     waiting_for_activations = State()
     waiting_for_password = State()
+    waiting_for_check_pass_input = State()
 
 
 FIELD_SIZE = 25
@@ -232,23 +236,26 @@ def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🔗 Поделиться",
-                    switch_inline_query=f"check_{chek_id}",
-                )
+                    text="Поделиться",
+                    switch_inline_query=f"{chek_id}",
+                ),
+                InlineKeyboardButton(
+                    text="Скопировать",
+                    icon_custom_emoji_id="5377535110289576661",
+                    callback_data=f"chek_copy_link:{chek_id}",
+                ),
             ],
             [
                 InlineKeyboardButton(
-                    text="Установить ограничения",
+                    text="Ограничения",
                     icon_custom_emoji_id="5312462735097764089",
                     callback_data=f"chek_limits_menu:{chek_id}",
-                )
-            ],
-            [
+                ),
                 InlineKeyboardButton(
                     text="Удалить чек",
                     icon_custom_emoji_id="5296410453742753454",
                     callback_data=f"chek_delete:{chek_id}",
-                )
+                ),
             ],
             [
                 InlineKeyboardButton(
@@ -261,7 +268,7 @@ def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
 
 def get_chek_limits_keyboard(chek_id: str) -> InlineKeyboardMarkup:
     chek = created_cheks.get(chek_id, {})
-    
+
     if chek.get("password"):
         pass_text = "Удалить пароль"
         pass_emoji = "5444856076954520455"
@@ -839,9 +846,13 @@ async def process_chek_activations_input(
             "rem_activations": activations,
             "password": None,
             "only_premium": False,
+            "activated_users": set(),
         }
 
         await state.clear()
+
+        bot_info = await message.bot.get_me()
+        check_link = f"t.me/{bot_info.username}?start={chek_id}"
 
         if activations == 1:
             title_str = f"Чек на {amount:.2f}$"
@@ -850,7 +861,7 @@ async def process_chek_activations_input(
 
         text = (
             f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> {title_str} успешно создан!\n\n'
-            f"Код чека: <code>{chek_id}</code></b>"
+            f"Ссылка на чек: <code>{check_link}</code></b>"
         )
 
         await message.answer(
@@ -864,6 +875,14 @@ async def process_chek_activations_input(
         )
 
 
+@dp.callback_query(F.data.startswith("chek_copy_link:"))
+async def chek_copy_link_handler(call: CallbackQuery) -> None:
+    chek_id = call.data.split(":")[1]
+    bot_info = await call.bot.get_me()
+    check_link = f"t.me/{bot_info.username}?start={chek_id}"
+    await call.answer(f"Ссылка скопирована: {check_link}", show_alert=True)
+
+
 @dp.callback_query(F.data.startswith("chek_manage:"))
 async def chek_manage_handler(call: CallbackQuery) -> None:
     chek_id = call.data.split(":")[1]
@@ -872,6 +891,9 @@ async def chek_manage_handler(call: CallbackQuery) -> None:
     if not chek:
         await call.answer("Чек не найден!", show_alert=True)
         return
+
+    bot_info = await call.bot.get_me()
+    check_link = f"t.me/{bot_info.username}?start={chek_id}"
 
     amount = chek["amount"]
     activations = chek["activations"]
@@ -882,7 +904,7 @@ async def chek_manage_handler(call: CallbackQuery) -> None:
 
     text = (
         f'<b><tg-emoji emoji-id="5451807640436903198">🎰</tg-emoji> Управление: {title_str}\n\n'
-        f"Код чека: <code>{chek_id}</code>\n"
+        f"Ссылка на чек: <code>{check_link}</code>\n"
         f"Осталось активаций: {chek['rem_activations']}/{activations}</b>"
     )
     await safe_edit_message(call, text, get_chek_manage_keyboard(chek_id))
@@ -1035,6 +1057,191 @@ async def chek_active_list_handler(call: CallbackQuery) -> None:
     )
 
 
+# --- ЛОГИКА ИНЛАЙН И АКТИВАЦИИ ЧЕКОВ ---
+
+
+@dp.inline_query()
+async def inline_check_handler(query: InlineQuery) -> None:
+    chek_id = query.query.strip()
+    if chek_id.startswith("check_"):
+        chek_id = chek_id[6:]
+
+    chek = created_cheks.get(chek_id)
+    if not chek or chek["rem_activations"] <= 0:
+        await query.answer([], cache_time=1)
+        return
+
+    bot_info = await query.bot.get_me()
+    amount_str = f"{chek['amount']:.2f}".rstrip("0").rstrip(".")
+    if chek["amount"].is_integer():
+        amount_str = str(int(chek["amount"]))
+
+    acts = chek["activations"]
+    if acts == 1:
+        act_str = "1 активация"
+    elif 2 <= acts <= 4:
+        act_str = f"{acts} активации"
+    else:
+        act_str = f"{acts} активаций"
+
+    caption_text = f"<b>💸 Чек на {amount_str}$\n{act_str}</b>"
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Получить",
+                    url=f"t.me/{bot_info.username}?start={chek['id']}",
+                )
+            ]
+        ]
+    )
+
+    item = InlineQueryResultArticle(
+        id=chek_id,
+        title=f"Отправить чек на {amount_str}$",
+        description=f"На {act_str}",
+        input_message_content=InputTextMessageContent(
+            message_text=caption_text, parse_mode="HTML"
+        ),
+        reply_markup=keyboard,
+    )
+    await query.answer([item], cache_time=1)
+
+
+async def complete_chek_activation(
+    message_or_call, user, chek: dict, state: FSMContext = None
+) -> None:
+    user_id = user.id
+    chek["rem_activations"] -= 1
+    if "activated_users" not in chek:
+        chek["activated_users"] = set()
+    chek["activated_users"].add(user_id)
+
+    user_balances[user_id] = get_user_balance(user_id) + chek["amount"]
+
+    if chek["rem_activations"] <= 0:
+        if chek["id"] in created_cheks:
+            del created_cheks[chek["id"]]
+
+    amount_str = f"{chek['amount']:.2f}".rstrip("0").rstrip(".")
+    if chek["amount"].is_integer():
+        amount_str = str(int(chek["amount"]))
+
+    text = (
+        f'<b><tg-emoji emoji-id="5452157517062770940">💸</tg-emoji> Вы получили {amount_str}$</b>'
+    )
+
+    if isinstance(message_or_call, Message):
+        await message_or_call.answer(text, parse_mode="HTML")
+    else:
+        await message_or_call.message.answer(text, parse_mode="HTML")
+
+    if state:
+        await state.clear()
+
+    # Уведомление владельцу
+    user_name = html.quote(user.full_name)
+    user_link = f'<a href="tg://user?id={user_id}">{user_name}</a>'
+    owner_text = (
+        f'<b><tg-emoji emoji-id="5307773751796996779">🎟</tg-emoji> {user_link} '
+        f"активировал ваш чек на {amount_str}$</b>"
+    )
+    try:
+        await message_or_call.bot.send_message(
+            chek["owner_id"], owner_text, parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+
+@dp.callback_query(F.data.startswith("activate_chek_btn:"))
+async def activate_chek_btn_handler(
+    call: CallbackQuery, state: FSMContext
+) -> None:
+    chek_id = call.data.split(":")[1]
+    chek = created_cheks.get(chek_id)
+
+    if not chek:
+        await call.answer("Чек не найден!", show_alert=True)
+        return
+
+    user = call.from_user
+    user_id = user.id
+
+    if "activated_users" in chek and user_id in chek["activated_users"]:
+        await call.answer("Этот чек уже активирован !", show_alert=True)
+        return
+
+    if chek["rem_activations"] <= 0:
+        await call.answer("Этот чек уже активирован !", show_alert=True)
+        return
+
+    if chek.get("only_premium") and not getattr(user, "is_premium", False):
+        await call.answer(
+            "Этот чек доступен только дял премиум-пользователей !",
+            show_alert=True,
+        )
+        return
+
+    if chek.get("password"):
+        await state.update_data(target_chek_id=chek_id)
+        await state.set_state(ChekState.waiting_for_check_pass_input)
+        text = "<b>Введите пароль дял использования чека:</b>"
+        await call.message.answer(text, parse_mode="HTML")
+        await call.answer()
+        return
+
+    await complete_chek_activation(call, user, chek, state)
+    await call.answer()
+
+
+@dp.message(ChekState.waiting_for_check_pass_input)
+async def process_check_pass_input(
+    message: Message, state: FSMContext
+) -> None:
+    data = await state.get_data()
+    chek_id = data.get("target_chek_id")
+    chek = created_cheks.get(chek_id)
+
+    if not chek:
+        await message.answer("<b>Чек не найден!</b>", parse_mode="HTML")
+        await state.clear()
+        return
+
+    user = message.from_user
+    user_id = user.id
+
+    if "activated_users" in chek and user_id in chek["activated_users"]:
+        await message.answer(
+            "<b>Этот чек уже активирован !</b>", parse_mode="HTML"
+        )
+        await state.clear()
+        return
+
+    if chek["rem_activations"] <= 0:
+        await message.answer(
+            "<b>Этот чек уже активирован !</b>", parse_mode="HTML"
+        )
+        await state.clear()
+        return
+
+    if chek.get("only_premium") and not getattr(user, "is_premium", False):
+        await message.answer(
+            "<b>Этот чек доступен только дял премиум-пользователей !</b>",
+            parse_mode="HTML",
+        )
+        await state.clear()
+        return
+
+    pwd_input = message.text.strip()
+    if pwd_input != chek["password"]:
+        await message.answer("<b>❌ Неверный пароль! Попробуйте снова:</b>")
+        return
+
+    await complete_chek_activation(message, user, chek, state)
+
+
 # --- ОСНОВНЫЕ ИГРОВЫЕ И СИСТЕМНЫЕ ХЕНДЛЕРЫ ---
 
 
@@ -1057,12 +1264,56 @@ async def mines_choose_bet_handler(
 
 
 @dp.message(CommandStart())
-async def command_start_handler(message: Message) -> None:
-    user_id = message.from_user.id if message.from_user else 0
-    user_name = message.from_user.first_name if message.from_user else "Игрок"
+async def command_start_handler(message: Message, state: FSMContext) -> None:
+    user = message.from_user
+    user_id = user.id if user else 0
+    user_name = user.first_name if user else "Игрок"
 
     get_user_balance(user_id)
     get_user_turnover(user_id)
+
+    args = message.text.split(maxsplit=1)
+    if len(args) > 1:
+        chek_id = args[1].strip()
+        if chek_id.startswith("check_"):
+            chek_id = chek_id[6:]
+
+        chek = created_cheks.get(chek_id)
+
+        if not chek:
+            await message.answer("<b>Чек не найден!</b>", parse_mode="HTML")
+            return
+
+        if "activated_users" in chek and user_id in chek["activated_users"]:
+            await message.answer(
+                "<b>Этот чек уже активирован !</b>", parse_mode="HTML"
+            )
+            return
+
+        if chek["rem_activations"] <= 0:
+            await message.answer(
+                "<b>Этот чек уже активирован !</b>", parse_mode="HTML"
+            )
+            return
+
+        if chek.get("only_premium") and not getattr(user, "is_premium", False):
+            await message.answer(
+                "<b>Этот чек доступен только дял премиум-пользователей !</b>",
+                parse_mode="HTML",
+            )
+            return
+
+        if chek.get("password"):
+            await state.update_data(target_chek_id=chek_id)
+            await state.set_state(ChekState.waiting_for_check_pass_input)
+            await message.answer(
+                "<b>Введите пароль дял использования чека:</b>",
+                parse_mode="HTML",
+            )
+            return
+
+        await complete_chek_activation(message, user, chek, state)
+        return
 
     text = f'<b><tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> Добро пожаловать, {html.quote(user_name)}!</b>'
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
