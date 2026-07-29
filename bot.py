@@ -20,7 +20,7 @@ dp = Dispatcher()
 # Балансы пользователей (по умолчанию 1.00)
 user_balances = {}
 
-# Оборот пользователей
+# Оборот пользователей (по умолчанию 0.00)
 user_turnover = {}
 
 # Активные игры: user_id -> dict
@@ -52,7 +52,7 @@ def get_game_settings(user_id: int):
     return game_settings[user_id]
 
 
-# Главное Reply-меню
+# Главное меню внизу (Reply) - 3 кнопки: Кошелек, Играть, Меню
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [
@@ -62,20 +62,40 @@ main_keyboard = ReplyKeyboardMarkup(
             KeyboardButton(
                 text="Играть", icon_custom_emoji_id="5471895876790161593"
             ),
-        ],
-        [
-            KeyboardButton(
-                text="Профиль", icon_custom_emoji_id="5308004189677330658"
-            ),
             KeyboardButton(
                 text="Меню", icon_custom_emoji_id="5469969339144773395"
             ),
-        ],
+        ]
     ],
     resize_keyboard=True,
 )
 
-# Инлайн-клавиатура Кошелька
+# Инлайн-кнопки внутри Меню (Профиль, Играть, Кошелек)
+menu_inline_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Профиль",
+                icon_custom_emoji_id="5308004189677330658",
+                callback_data="open_profile",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="Играть",
+                icon_custom_emoji_id="5471895876790161593",
+                callback_data="back_to_games",
+            ),
+            InlineKeyboardButton(
+                text="Кошелек",
+                icon_custom_emoji_id="5197686464325915345",
+                callback_data="open_wallet_inline",
+            ),
+        ],
+    ]
+)
+
+# Кнопки под инлайн-кошельком
 wallet_inline_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
         [
@@ -93,7 +113,7 @@ wallet_inline_keyboard = InlineKeyboardMarkup(
     ]
 )
 
-# Инлайн-клавиатура для Профиля (с кнопкой "Назад")
+# Кнопки под инлайн-профилем (Пополнить, Вывести + Назад)
 profile_inline_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
         [
@@ -292,6 +312,17 @@ def calculate_multiplier(mines_count: int, opened_count: int) -> float:
     return max(round(mult, 2), 1.01)
 
 
+def build_profile_text(user_id: int, full_name: str) -> str:
+    balance = get_user_balance(user_id)
+    turnover = get_user_turnover(user_id)
+    return (
+        f'<tg-emoji emoji-id="5308004189677330658">👤</tg-emoji> {html.quote(full_name)}\n'
+        f'ID : {user_id}\n'
+        f'<tg-emoji emoji-id="5310262449121827356">💰</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n'
+        f'<tg-emoji emoji-id="5452042536493288421">📊</tg-emoji> Оборот : {turnover:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>'
+    )
+
+
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
@@ -304,30 +335,52 @@ async def command_start_handler(message: Message) -> None:
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
 
 
-# Хэндлер Профиля
-@dp.message(F.text.in_(["Профиль", "/profile"]))
-async def profile_handler(message: Message) -> None:
+# Нажатие на кнопку "Меню"
+@dp.message(F.text.in_(["Меню", "/menu"]))
+async def menu_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
-    full_name = message.from_user.full_name if message.from_user else "Игрок"
     balance = get_user_balance(user_id)
-    turnover = get_user_turnover(user_id)
 
     text = (
-        f'<tg-emoji emoji-id="5308004189677330658">👤</tg-emoji> {html.quote(full_name)}\n'
-        f'ID : {user_id}\n'
-        f'<tg-emoji emoji-id="5310262449121827356">💰</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n'
-        f'<tg-emoji emoji-id="5452042536493288421">📊</tg-emoji> Оборот : {turnover:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>'
+        '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
+        f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+    )
+    await message.answer(
+        text=text, parse_mode="HTML", reply_markup=menu_inline_keyboard
     )
 
-    await message.answer(
+
+# Нажатие на инлайн-кнопку "Профиль" из меню
+@dp.callback_query(F.data == "open_profile")
+async def open_profile_callback(call: CallbackQuery) -> None:
+    user_id = call.from_user.id
+    full_name = call.from_user.full_name if call.from_user else "Игрок"
+
+    text = build_profile_text(user_id, full_name)
+    await call.message.edit_text(
         text=text, parse_mode="HTML", reply_markup=profile_inline_keyboard
     )
 
 
-# Закрытие профиля при нажатии "Назад"
+# Закрытие профиля по кнопке "◀ Назад"
 @dp.callback_query(F.data == "close_profile")
 async def close_profile_handler(call: CallbackQuery) -> None:
     await call.message.delete()
+
+
+# Кошелек через инлайн-кнопку
+@dp.callback_query(F.data == "open_wallet_inline")
+async def open_wallet_inline_handler(call: CallbackQuery) -> None:
+    user_id = call.from_user.id
+    balance = get_user_balance(user_id)
+
+    text = (
+        f'<b><tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> '
+        f'Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+    )
+    await call.message.edit_text(
+        text=text, parse_mode="HTML", reply_markup=wallet_inline_keyboard
+    )
 
 
 @dp.message(F.text.in_(["Кошелек", "Баланс", "/wallet", "/balance"]))
@@ -354,18 +407,6 @@ async def play_handler(message: Message) -> None:
         f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
     await message.answer(text=text, parse_mode="HTML", reply_markup=games_keyboard)
-
-
-@dp.message(F.text.in_(["Меню", "/menu"]))
-async def menu_handler(message: Message) -> None:
-    user_id = message.from_user.id if message.from_user else 0
-    balance = get_user_balance(user_id)
-
-    text = (
-        '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
-        f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
-    )
-    await message.answer(text=text, parse_mode="HTML")
 
 
 @dp.callback_query(F.data == "back_to_games")
