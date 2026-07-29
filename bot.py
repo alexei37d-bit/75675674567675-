@@ -596,10 +596,10 @@ async def play_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
     balance = get_user_balance(user_id)
 
-  text = (
-    '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n'
-    f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
-)
+    text = (
+        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n'
+        f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+    )
     await message.answer(text=text, parse_mode="HTML", reply_markup=games_keyboard)
 
 
@@ -610,12 +610,10 @@ async def back_to_games_handler(call: CallbackQuery, state: FSMContext) -> None:
     balance = get_user_balance(user_id)
 
     text = (
-        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n\n'
+        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n'
         f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
     await safe_edit_message(call, text, games_keyboard)
-
-
 @dp.callback_query(F.data == "locked_cell")
 async def locked_cell_handler(call: CallbackQuery) -> None:
     await call.answer("Нажимайте только на доступные кнопки на текущем этаже!", show_alert=True)
