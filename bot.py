@@ -380,7 +380,7 @@ async def process_custom_bet(message: Message, state: FSMContext) -> None:
             reply_markup=get_preview_game_keyboard(user_id),
         )
     except ValueError:
-        await message.answer("<b>❌ Введите корректную сумму (например: 0.4 или 1):</b>")
+        await message.answer("❌ Введите корректную сумму (например: 0.4 или 1):")
 
 
 # Экран предпросмотра
