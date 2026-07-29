@@ -203,7 +203,7 @@ def get_preview_game_keyboard(user_id: int) -> InlineKeyboardMarkup:
                 text=f"💣 Мин: {mines}", callback_data="screen_choose_mines"
             ),
             InlineKeyboardButton(
-                text="◀ Назад", callback_data="mines_choose_bet"
+                text="◀ Ставка", callback_data="mines_choose_bet"
             ),
         ]
     )
@@ -298,7 +298,7 @@ def build_game_keyboard(
                     text="🔄 Сыграть снова", callback_data="screen_game_confirm"
                 ),
                 InlineKeyboardButton(
-                    text="◀ Назад", callback_data="mines_choose_bet"
+                    text="◀ Меню", callback_data="mines_choose_bet"
                 ),
             ]
         )
@@ -317,7 +317,7 @@ def build_profile_text(user_id: int, full_name: str) -> str:
     turnover = get_user_turnover(user_id)
     return (
         f'<tg-emoji emoji-id="5308004189677330658">👤</tg-emoji> {html.quote(full_name)}\n'
-        f'<tg-emoji emoji-id=\"5449624985301717991\">💳</tg-emoji> Ваш ID : {user_id}\n'
+        f'<tg-emoji emoji-id="5449624985301717991">💳</tg-emoji> Ваш ID : {user_id}\n'
         f'<tg-emoji emoji-id="5310262449121827356">💰</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n'
         f'<tg-emoji emoji-id="5452042536493288421">📊</tg-emoji> Оборот : {turnover:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>'
     )
@@ -362,10 +362,19 @@ async def open_profile_callback(call: CallbackQuery) -> None:
     )
 
 
-# Закрытие профиля по кнопке "◀ Назад"
+# Закрытие профиля по кнопке "◀ Назад" - теперь возвращает в Главное Меню
 @dp.callback_query(F.data == "close_profile")
 async def close_profile_handler(call: CallbackQuery) -> None:
-    await call.message.delete()
+    user_id = call.from_user.id
+    balance = get_user_balance(user_id)
+
+    text = (
+        '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
+        f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+    )
+    await call.message.edit_text(
+        text=text, parse_mode="HTML", reply_markup=menu_inline_keyboard
+    )
 
 
 # Кошелек через инлайн-кнопку
