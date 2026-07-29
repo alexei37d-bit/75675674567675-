@@ -135,7 +135,7 @@ def get_preview_game_keyboard(user_id: int) -> InlineKeyboardMarkup:
     keyboard.append(
         [
             InlineKeyboardButton(
-                text=f"▶ Играть ({bet:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji>)",
+                text=f"▶ Играть ({bet:.2f})",
                 callback_data="start_mines_game",
             )
         ]
@@ -213,7 +213,7 @@ def build_game_keyboard(
             elif game_over and idx in mines_positions:
                 text = "💣"
             else:
-                text = "❓"
+                text = "🌑"
 
             row_buttons.append(
                 InlineKeyboardButton(
@@ -228,7 +228,7 @@ def build_game_keyboard(
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    text=f"💰 Забрать {current_win:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji>",
+                    text=f"💰 Забрать {current_win:.2f}",
                     callback_data="cashout_mines",
                 )
             ]
@@ -370,7 +370,7 @@ async def process_custom_bet(message: Message, state: FSMContext) -> None:
         text = (
             f'<tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> <b>Мины</b>      '
             f'Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n'
-            f'Выбрано - {st["mines"]} <tg-emoji emoji-id="5452018153963948977">💣</tg-emoji>'
+            f'Выбрано - {st["mines"]} 💣'
         )
         await message.answer(
             text=text,
