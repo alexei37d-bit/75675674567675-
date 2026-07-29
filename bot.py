@@ -541,13 +541,7 @@ def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
                     callback_data=f"chek_copy_link:{chek_id}",
                 ),
             ],
-            [
-                InlineKeyboardButton(
-                    text=pin_btn_text,
-                    icon_custom_emoji_id="5197269100878907942",
-                    callback_data=pin_cbd,
-                )
-            ],
+    
             [
                 InlineKeyboardButton(
                     text="Ограничения",
