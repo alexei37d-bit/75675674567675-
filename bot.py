@@ -1,4 +1,4 @@
-import asyncioimport asyncio
+import asyncio
 import random
 from aiogram import Bot, Dispatcher, F, html
 from aiogram.filters import CommandStart
@@ -17,7 +17,7 @@ TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
 
 dp = Dispatcher()
 
-# Балансы пользователей (по умолчанию 0.00)
+# Балансы пользователей (по умолчанию 1.00$)
 user_balances = {}
 
 # Активные игры: user_id -> dict
@@ -31,7 +31,7 @@ class MinesState(StatesGroup):
     waiting_for_custom_bet = State()
 
 
-FIELD_SIZE = 25  # 5x5
+FIELD_SIZE = 25  # Поле 5x5
 
 
 def get_game_settings(user_id: int):
@@ -208,7 +208,7 @@ def build_game_keyboard(
             )
         keyboard.append(row_buttons)
 
-    # Забрать выигрыш
+    # Забрать выигрыш (если игра еще активна и открыта хотя бы 1 клетка)
     if not game_over and len(opened) > 0:
         current_win = game_data["current_win"]
         keyboard.append(
@@ -220,7 +220,7 @@ def build_game_keyboard(
             ]
         )
 
-    # Если игра окончена
+    # Если игра окончена — кнопки для нового раунда
     if finished:
         keyboard.append(
             [
@@ -250,8 +250,9 @@ async def command_start_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
     user_name = message.from_user.first_name if message.from_user else "Игрок"
 
+    # Выдаем стартовый баланс 1.00$ новому пользователю
     if user_id not in user_balances:
-        user_balances[user_id] = 0.00
+        user_balances[user_id] = 1.00
 
     text = f'<b><tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> Добро пожаловать, {html.quote(user_name)}!</b>'
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
@@ -260,7 +261,7 @@ async def command_start_handler(message: Message) -> None:
 @dp.message(F.text.in_(["Кошелек", "Баланс", "/wallet", "/balance"]))
 async def wallet_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
-    balance = user_balances.get(user_id, 0.00)
+    balance = user_balances.get(user_id, 1.00)
 
     text = (
         f'<b><tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> '
@@ -274,7 +275,7 @@ async def wallet_handler(message: Message) -> None:
 @dp.message(F.text.in_(["Играть", "/play"]))
 async def play_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
-    balance = user_balances.get(user_id, 0.00)
+    balance = user_balances.get(user_id, 1.00)
 
     text = (
         '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n\n'
@@ -286,7 +287,7 @@ async def play_handler(message: Message) -> None:
 @dp.message(F.text.in_(["Меню", "/menu"]))
 async def menu_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
-    balance = user_balances.get(user_id, 0.00)
+    balance = user_balances.get(user_id, 1.00)
 
     text = (
         '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
@@ -299,7 +300,7 @@ async def menu_handler(message: Message) -> None:
 async def back_to_games_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     user_id = call.from_user.id
-    balance = user_balances.get(user_id, 0.00)
+    balance = user_balances.get(user_id, 1.00)
 
     text = (
         '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n\n'
@@ -362,7 +363,7 @@ async def process_custom_bet(message: Message, state: FSMContext) -> None:
         await message.answer("❌ Пожалуйста, введите корректное число (например: 0.4 или 1.5):")
 
 
-# 2. Шаг: Главное окно параметров перед стартом
+# 2. Шаг: Подтверждение параметров перед стартом
 @dp.callback_query(F.data == "screen_game_confirm")
 async def screen_game_confirm(call: CallbackQuery) -> None:
     user_id = call.from_user.id
@@ -380,7 +381,7 @@ async def screen_game_confirm(call: CallbackQuery) -> None:
     )
 
 
-# 3. Шаг: Изменение количества мин (сообщение меняется на выбор мин)
+# 3. Шаг: Выбор количества мин
 @dp.callback_query(F.data == "screen_choose_mines")
 async def screen_choose_mines(call: CallbackQuery) -> None:
     text = "💣 <b>Выберите количество мин на поле (от 2 до 24):</b>"
@@ -403,7 +404,7 @@ async def set_mines_count(call: CallbackQuery) -> None:
 @dp.callback_query(F.data == "start_mines_game")
 async def start_mines_game(call: CallbackQuery) -> None:
     user_id = call.from_user.id
-    balance = user_balances.get(user_id, 0.00)
+    balance = user_balances.get(user_id, 1.00)
     st = get_game_settings(user_id)
     bet = st["bet"]
     mines_count = st["mines"]
@@ -455,7 +456,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
     game["opened"].add(cell_idx)
 
-    # Подорвался
+    # Наступил на мину
     if cell_idx in game["mines_positions"]:
         game["game_over"] = True
         text = (
@@ -470,13 +471,13 @@ async def open_cell_handler(call: CallbackQuery) -> None:
         del active_games[user_id]
         return
 
-    # Открыл безопасную
+    # Открыл безопасную клетку
     opened_count = len(game["opened"])
     mult = calculate_multiplier(game["mines_count"], opened_count)
     current_win = game["bet"] * mult
     game["current_win"] = current_win
 
-    # Победил полностью
+    # Выиграл все безопасные клетки
     if opened_count == (FIELD_SIZE - game["mines_count"]):
         game["game_over"] = True
         user_balances[user_id] += current_win
