@@ -377,8 +377,8 @@ def get_preview_tower_keyboard(user_id: int) -> InlineKeyboardMarkup:
     traps = st["traps"]
 
     keyboard = []
-    # Сверху вниз (8 этаж вверху, 1 этаж внизу)
-    for floor_idx in range(TOWER_FLOORS - 1, -1, -1):
+    # Сверху вниз (от 0 до 7 этажа)
+    for floor_idx in range(TOWER_FLOORS):
         x_mult = calculate_tower_multiplier(traps, floor_idx + 1)
         row = [InlineKeyboardButton(text=f"x{x_mult:.2f}", callback_data="locked_cell")]
         row.extend([InlineKeyboardButton(text="🌑", callback_data="locked_cell") for _ in range(5)])
@@ -429,8 +429,8 @@ def build_tower_game_keyboard(game_data: dict, finished: bool = False) -> Inline
     trap_positions = game_data["trap_positions"]
     traps_count = game_data["traps_count"]
 
-    # Строим клавиатуру сверху вниз (от 8 этажа к 1 этажу)
-    for floor_idx in range(TOWER_FLOORS - 1, -1, -1):
+    # Идет СВЕРХУ ВНИЗ (0 - верхний ряд, 7 - нижний ряд)
+    for floor_idx in range(TOWER_FLOORS):
         row_buttons = []
         
         # Кнопка Икса (множителя) слева
@@ -446,20 +446,18 @@ def build_tower_game_keyboard(game_data: dict, finished: bool = False) -> Inline
                 if col == chosen_col:
                     text = "🎁" if is_win else "💥"
                 elif col in trap_positions[floor_idx]:
-                    # Показываем мины после того как прошёл ряд или проиграл
+                    # Показываем мины после того как прошёл ряд
                     text = "💣"
                 else:
                     text = "🌑"
                 cbd = "locked_cell"
             elif is_passed:
-                # Если этаж пройден, показываем на нем все мины
                 if col in trap_positions[floor_idx]:
                     text = "💣"
                 else:
                     text = "🌑"
                 cbd = "locked_cell"
             elif game_over:
-                # В случае проигрыша показываем мины
                 if col in trap_positions[floor_idx]:
                     text = "💣"
                 else:
@@ -550,7 +548,7 @@ async def open_profile_callback(call: CallbackQuery) -> None:
     await safe_edit_message(call, text, profile_inline_keyboard)
 
 
-# Закрытие профиля по кнопке "◀ Назад" - теперь возвращает в Главное Меню
+# Закрытие профиля по кнопке "◀ Назад" - возвращает в Главное Меню
 @dp.callback_query(F.data == "close_profile")
 async def close_profile_handler(call: CallbackQuery) -> None:
     user_id = call.from_user.id
@@ -990,7 +988,7 @@ async def start_tower_game(call: CallbackQuery) -> None:
     text = (
         f"<b><tg-emoji emoji-id=\"5449397725697187601\">🏰</tg-emoji> Игра началась!\n\n"
         f"Ставка: {bet:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji> | Мин в ряду: {traps_count}\n"
-        f"Выберите клетку на 1 этаже:</b>"
+        f"Выберите клетку на 1 этаже (в самом верху):</b>"
     )
 
     await safe_edit_message(call, text, build_tower_game_keyboard(active_tower_games[user_id]))
@@ -1010,7 +1008,7 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
     game = active_tower_games[user_id]
 
     if floor != game["current_floor"]:
-        await call.answer("Открывайте этажи по порядку снизу вверх!", show_alert=True)
+        await call.answer("Открывайте этажи по порядку сверху вниз!", show_alert=True)
         return
 
     traps = game["trap_positions"][floor]
