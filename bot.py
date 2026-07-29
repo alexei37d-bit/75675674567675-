@@ -530,9 +530,9 @@ async def menu_handler(message: Message) -> None:
     balance = get_user_balance(user_id)
 
     text = (
-        '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
-        f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
-    )
+    '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n'
+    f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+)
     await message.answer(
         text=text, parse_mode="HTML", reply_markup=menu_inline_keyboard
     )
