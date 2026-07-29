@@ -29,10 +29,21 @@ active_games = {}
 # Параметры ставок перед игрой: user_id -> dict
 game_settings = {}
 
+# Активные игры в Башню: user_id -> dict
+active_tower_games = {}
+
+# Параметры ставок для Башни: user_id -> dict
+tower_game_settings = {}
+
 
 class MinesState(StatesGroup):
     waiting_for_custom_bet = State()
     waiting_for_custom_mines = State()
+
+
+class TowerState(StatesGroup):
+    waiting_for_custom_bet = State()
+    waiting_for_custom_traps = State()
 
 
 FIELD_SIZE = 25  # Поле 5x5
@@ -50,6 +61,12 @@ def get_game_settings(user_id: int):
     if user_id not in game_settings:
         game_settings[user_id] = {"bet": 0.10, "mines": 3}
     return game_settings[user_id]
+
+
+def get_tower_settings(user_id: int):
+    if user_id not in tower_game_settings:
+        tower_game_settings[user_id] = {"bet": 0.10, "traps": 1}
+    return tower_game_settings[user_id]
 
 
 # Главное меню внизу (Reply) - 3 кнопки: Кошелек, Играть, Меню
@@ -144,6 +161,13 @@ games_keyboard = InlineKeyboardMarkup(
                 text="Мины",
                 icon_custom_emoji_id="5452018153963948977",
                 callback_data="mines_choose_bet",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="Башня",
+                icon_custom_emoji_id="5449397725697187601",
+                callback_data="tower_choose_bet",
             )
         ]
     ]
@@ -316,11 +340,144 @@ def build_profile_text(user_id: int, full_name: str) -> str:
     balance = get_user_balance(user_id)
     turnover = get_user_turnover(user_id)
     return (
-        f'<tg-emoji emoji-id="5308004189677330658">👤</tg-emoji> {html.quote(full_name)}\n'
-        f'<tg-emoji emoji-id="5449624985301717991">💳</tg-emoji> Ваш ID : {user_id}\n'
-        f'<tg-emoji emoji-id="5310262449121827356">💰</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n'
-        f'<tg-emoji emoji-id="5452042536493288421">📊</tg-emoji> Оборот : {turnover:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>'
+        f'<b><tg-emoji emoji-id="5308004189677330658">👤</tg-emoji> {html.quote(full_name)}</b>\n'
+        f'<b><tg-emoji emoji-id="5449624985301717991">💳</tg-emoji> Ваш ID : {user_id}</b>\n'
+        f'<b><tg-emoji emoji-id="5310262449121827356">💰</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
+        f'<b><tg-emoji emoji-id="5452042536493288421">📊</tg-emoji> Оборот : {turnover:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
+
+
+# --- ЛОГИКА ИГРЫ БАШНЯ ---
+
+TOWER_FLOORS = 8
+
+def calculate_tower_multiplier(traps_count: int, floor: int) -> float:
+    safe_count = 5 - traps_count
+    mult = (5 / safe_count) ** floor
+    return max(round(mult, 2), 1.01)
+
+def get_tower_bet_selection_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="0.1$", callback_data="select_tower_bet_0.1"),
+                InlineKeyboardButton(text="0.5$", callback_data="select_tower_bet_0.5"),
+                InlineKeyboardButton(text="1$", callback_data="select_tower_bet_1.0"),
+            ],
+            [
+                InlineKeyboardButton(text="◀ Назад", callback_data="back_to_games")
+            ],
+        ]
+    )
+
+def get_preview_tower_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    st = get_tower_settings(user_id)
+    bet = st["bet"]
+    traps = st["traps"]
+
+    keyboard = []
+    for _ in range(TOWER_FLOORS):
+        row = [InlineKeyboardButton(text="🌑", callback_data="locked_cell") for _ in range(5)]
+        keyboard.append(row)
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                text=f"Играть {bet:.2f}",
+                icon_custom_emoji_id="5305445793623218874",
+                callback_data="start_tower_game",
+            )
+        ]
+    )
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                text=f"💣 Мин: {traps}", callback_data="screen_choose_tower_traps"
+            ),
+            InlineKeyboardButton(
+                text="◀ Ставка", callback_data="tower_choose_bet"
+            ),
+        ]
+    )
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def get_tower_traps_count_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="1", callback_data="set_tower_traps_cnt_1"),
+                InlineKeyboardButton(text="2", callback_data="set_tower_traps_cnt_2"),
+                InlineKeyboardButton(text="3", callback_data="set_tower_traps_cnt_3"),
+                InlineKeyboardButton(text="4", callback_data="set_tower_traps_cnt_4"),
+            ],
+            [
+                InlineKeyboardButton(text="◀ Назад", callback_data="screen_tower_game_confirm")
+            ],
+        ]
+    )
+
+def build_tower_game_keyboard(game_data: dict, finished: bool = False) -> InlineKeyboardMarkup:
+    keyboard = []
+    current_floor = game_data["current_floor"]
+    history = game_data["history"]
+    game_over = game_data["game_over"]
+    trap_positions = game_data["trap_positions"]
+
+    for floor_idx in range(TOWER_FLOORS - 1, -1, -1):
+        row_buttons = []
+        is_active_row = (floor_idx == current_floor) and not game_over
+        for col in range(5):
+            if floor_idx in history:
+                chosen_col, is_win = history[floor_idx]
+                if col == chosen_col:
+                    text = "🎁" if is_win else "💥"
+                elif game_over and col in trap_positions[floor_idx]:
+                    text = "💣"
+                else:
+                    text = "🌑"
+                cbd = "locked_cell"
+            elif game_over:
+                if col in trap_positions[floor_idx]:
+                    text = "💣"
+                else:
+                    text = "🌑"
+                cbd = "locked_cell"
+            elif is_active_row:
+                text = "🌑"
+                cbd = f"open_tower_{floor_idx}_{col}"
+            else:
+                text = "🌑"
+                cbd = "locked_cell"
+
+            row_buttons.append(InlineKeyboardButton(text=text, callback_data=cbd))
+        keyboard.append(row_buttons)
+
+    if not game_over and current_floor > 0:
+        current_win = game_data["current_win"]
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text=f"Забрать {current_win:.2f}",
+                    icon_custom_emoji_id="5305445793623218874",
+                    callback_data="cashout_tower",
+                )
+            ]
+        )
+
+    if finished:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="🔄 Сыграть снова", callback_data="screen_tower_game_confirm"
+                ),
+                InlineKeyboardButton(
+                    text="◀ Меню", callback_data="tower_choose_bet"
+                ),
+            ]
+        )
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 @dp.message(CommandStart())
@@ -687,6 +844,265 @@ async def cashout_mines_handler(call: CallbackQuery) -> None:
     del active_games[user_id]
 
 
+# --- ХЕНДЛЕРЫ ДЛЯ ИГРЫ БАШНЯ ---
+
+@dp.callback_query(F.data == "tower_choose_bet")
+async def tower_choose_bet_handler(call: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(TowerState.waiting_for_custom_bet)
+    text = (
+        '<b><tg-emoji emoji-id="5451754391432366821">💰</tg-emoji> Выберите ставку:\n'
+        'Или напишите сумму ставки в чат</b>'
+    )
+    await call.message.edit_text(
+        text=text, parse_mode="HTML", reply_markup=get_tower_bet_selection_keyboard()
+    )
+
+
+@dp.callback_query(F.data.startswith("select_tower_bet_"))
+async def select_tower_bet_quick(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    user_id = call.from_user.id
+    bet = float(call.data.split("_")[3])
+    st = get_tower_settings(user_id)
+    st["bet"] = bet
+
+    await screen_tower_game_confirm(call)
+
+
+@dp.message(TowerState.waiting_for_custom_bet)
+async def process_custom_tower_bet(message: Message, state: FSMContext) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    try:
+        raw_text = message.text.replace("$", "").replace(",", ".").strip()
+        bet = float(raw_text)
+        if bet <= 0:
+            raise ValueError
+
+        st = get_tower_settings(user_id)
+        st["bet"] = bet
+        await state.clear()
+
+        balance = get_user_balance(user_id)
+        text = (
+            f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня</b>\n'
+            f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
+            f'<b>Выбрано - {st["traps"]} 💣</b>'
+        )
+        await message.answer(
+            text=text,
+            parse_mode="HTML",
+            reply_markup=get_preview_tower_keyboard(user_id),
+        )
+    except ValueError:
+        await message.answer("❌ Введите корректную сумму (например: 0.4 или 1):")
+
+
+@dp.callback_query(F.data == "screen_tower_game_confirm")
+async def screen_tower_game_confirm(call: CallbackQuery, state: FSMContext = None) -> None:
+    if state:
+        await state.clear()
+    user_id = call.from_user.id
+    st = get_tower_settings(user_id)
+    balance = get_user_balance(user_id)
+
+    text = (
+        f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня</b>\n'
+        f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
+        f'<b>Выбрано - {st["traps"]} 💣</b>'
+    )
+    await call.message.edit_text(
+        text=text,
+        parse_mode="HTML",
+        reply_markup=get_preview_tower_keyboard(user_id),
+    )
+
+
+@dp.callback_query(F.data == "screen_choose_tower_traps")
+async def screen_choose_tower_traps(call: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(TowerState.waiting_for_custom_traps)
+    text = (
+        '<b>💣 Выберите количество мин на ряд (от 1 до 4):\n'
+        'Или напишите количество мин числом в чат</b>'
+    )
+    await call.message.edit_text(
+        text=text, parse_mode="HTML", reply_markup=get_tower_traps_count_keyboard()
+    )
+
+
+@dp.callback_query(F.data.startswith("set_tower_traps_cnt_"))
+async def set_tower_traps_count(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    user_id = call.from_user.id
+    cnt = int(call.data.split("_")[4])
+    st = get_tower_settings(user_id)
+    st["traps"] = cnt
+
+    await screen_tower_game_confirm(call)
+
+
+@dp.message(TowerState.waiting_for_custom_traps)
+async def process_custom_tower_traps(message: Message, state: FSMContext) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    try:
+        cnt = int(message.text.strip())
+        if not (1 <= cnt <= 4):
+            raise ValueError
+
+        st = get_tower_settings(user_id)
+        st["traps"] = cnt
+        await state.clear()
+
+        balance = get_user_balance(user_id)
+        text = (
+            f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня</b>\n'
+            f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
+            f'<b>Выбрано - {st["traps"]} 💣</b>'
+        )
+        await message.answer(
+            text=text,
+            parse_mode="HTML",
+            reply_markup=get_preview_tower_keyboard(user_id),
+        )
+    except ValueError:
+        await message.answer("<b>❌ Пожалуйста, введите целое число от 1 до 4:</b>")
+
+
+@dp.callback_query(F.data == "start_tower_game")
+async def start_tower_game(call: CallbackQuery) -> None:
+    user_id = call.from_user.id
+    balance = get_user_balance(user_id)
+    st = get_tower_settings(user_id)
+    bet = st["bet"]
+    traps_count = st["traps"]
+
+    if balance < bet:
+        await call.answer("❌ Недостаточно средств на балансе!", show_alert=True)
+        return
+
+    user_balances[user_id] -= bet
+    user_turnover[user_id] = get_user_turnover(user_id) + bet
+
+    trap_positions = {}
+    for floor in range(TOWER_FLOORS):
+        trap_positions[floor] = set(random.sample(range(5), traps_count))
+
+    active_tower_games[user_id] = {
+        "bet": bet,
+        "traps_count": traps_count,
+        "trap_positions": trap_positions,
+        "current_floor": 0,
+        "history": {},
+        "game_over": False,
+        "current_win": 0.00,
+    }
+
+    text = (
+        f"<b><tg-emoji emoji-id=\"5449397725697187601\">🏰</tg-emoji> Игра началась!\n\n"
+        f"Ставка: {bet:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji> | Мин в ряду: {traps_count}\n"
+        f"Выберите клетку на 1 этаже:</b>"
+    )
+
+    await call.message.edit_text(
+        text=text,
+        parse_mode="HTML",
+        reply_markup=build_tower_game_keyboard(active_tower_games[user_id]),
+    )
+
+
+@dp.callback_query(F.data.startswith("open_tower_"))
+async def open_tower_cell_handler(call: CallbackQuery) -> None:
+    user_id = call.from_user.id
+    if user_id not in active_tower_games or active_tower_games[user_id]["game_over"]:
+        await call.answer("Игра завершена.", show_alert=True)
+        return
+
+    parts = call.data.split("_")
+    floor = int(parts[2])
+    col = int(parts[3])
+
+    game = active_tower_games[user_id]
+
+    if floor != game["current_floor"]:
+        await call.answer("Открывайте этажи по порядку снизу вверх!", show_alert=True)
+        return
+
+    traps = game["trap_positions"][floor]
+
+    if col in traps:
+        game["game_over"] = True
+        game["history"][floor] = (col, False)
+        text = (
+            f"<b>💥 Вы подорвались на мине!\n\n"
+            f"Ваша ставка {game['bet']:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji> сгорела.</b>"
+        )
+        await call.message.edit_text(
+            text=text,
+            parse_mode="HTML",
+            reply_markup=build_tower_game_keyboard(game, finished=True),
+        )
+        del active_tower_games[user_id]
+        return
+
+    game["history"][floor] = (col, True)
+    game["current_floor"] += 1
+    opened_floors = game["current_floor"]
+
+    mult = calculate_tower_multiplier(game["traps_count"], opened_floors)
+    current_win = game["bet"] * mult
+    game["current_win"] = current_win
+
+    if opened_floors == TOWER_FLOORS:
+        game["game_over"] = True
+        user_balances[user_id] = get_user_balance(user_id) + current_win
+        text = (
+            f"<b>🎉 Поздравляем! Вы прошли всю башню!\n\n"
+            f"Ваш выигрыш: {current_win:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
+        )
+        await call.message.edit_text(
+            text=text,
+            parse_mode="HTML",
+            reply_markup=build_tower_game_keyboard(game, finished=True),
+        )
+        del active_tower_games[user_id]
+        return
+
+    text = (
+        f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня\n\n'
+        f'Множитель: x{mult:.2f}\n'
+        f'Текущий выигрыш: {current_win:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+    )
+    await call.message.edit_text(
+        text=text, parse_mode="HTML", reply_markup=build_tower_game_keyboard(game)
+    )
+
+
+@dp.callback_query(F.data == "cashout_tower")
+async def cashout_tower_handler(call: CallbackQuery) -> None:
+    user_id = call.from_user.id
+    if user_id not in active_tower_games or active_tower_games[user_id]["game_over"]:
+        await call.answer("Игра не найдена.", show_alert=True)
+        return
+
+    game = active_tower_games[user_id]
+    win_amount = game["current_win"]
+    game["game_over"] = True
+
+    user_balances[user_id] = get_user_balance(user_id) + win_amount
+
+    text = (
+        f"<b>💰 Вы успешно забрали выигрыш!\n\n"
+        f"Сумма: {win_amount:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji>\n"
+        f"Ваш баланс: {user_balances[user_id]:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
+    )
+
+    await call.message.edit_text(
+        text=text,
+        parse_mode="HTML",
+        reply_markup=build_tower_game_keyboard(game, finished=True),
+    )
+    del active_tower_games[user_id]
+
+
 # --- АДМИН-ПАНЕЛЬ ---
 ADMIN_IDS = {7921743592}
 
@@ -914,7 +1330,7 @@ async def admin_stats_handler(call: CallbackQuery) -> None:
 
     total_users = len(user_balances)
     total_balance = sum(user_balances.values())
-    active_games_cnt = len(active_games)
+    active_games_cnt = len(active_games) + len(active_tower_games)
 
     text = (
         "<b>📊 Статистика бота:</b>\n\n"
