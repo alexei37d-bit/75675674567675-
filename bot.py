@@ -1843,7 +1843,7 @@ async def process_custom_bet(message: Message, state: FSMContext) -> None:
     try:
         raw_text = message.text.replace("$", "").replace(",", ".").strip()
         bet = float(raw_text)
-        if bet <= 0:
+        if bet < 0.1:
             raise ValueError
 
         st = get_game_settings(user_id)
@@ -1863,7 +1863,7 @@ async def process_custom_bet(message: Message, state: FSMContext) -> None:
         )
     except ValueError:
         await message.answer(
-            "❌ Введите корректную сумму (например: 0.4 или 1):"
+            "❌ Введите корректную сумму от 0.1 (например: 0.1 или 1):"
         )
 
 
@@ -2158,7 +2158,7 @@ async def process_custom_tower_bet(
     try:
         raw_text = message.text.replace("$", "").replace(",", ".").strip()
         bet = float(raw_text)
-        if bet <= 0:
+        if bet < 0.1:
             raise ValueError
 
         st = get_tower_settings(user_id)
@@ -2178,7 +2178,7 @@ async def process_custom_tower_bet(
         )
     except ValueError:
         await message.answer(
-            "❌ Введите корректную сумму (например: 0.4 или 1):"
+            "❌ Введите корректную сумму от 0.1 (например: 0.1 или 1):"
         )
 
 
@@ -2448,6 +2448,77 @@ async def cashout_tower_handler(call: CallbackQuery) -> None:
     del active_tower_games[game_id]
 
 
+@dp.message(F.text & (F.chat.type == ChatType.SUPERGROUP) | (F.chat.type == ChatType.GROUP))
+async def chat_check_creation_handler(message: Message) -> None:
+    if not message.text:
+        return
+    
+    parts = message.text.strip().split()
+    if len(parts) < 2:
+        return
+    
+    bot_info = await message.bot.get_me()
+    bot_username = f"@{bot_info.username}".lower()
+    
+    possible_bot_mention = parts[0].lower()
+    if not (possible_bot_mention == bot_username or possible_bot_mention.startswith("@")):
+        return
+        
+    amount_str = parts[1].replace("$", "").replace(",", ".")
+    try:
+        amount = float(amount_str)
+        if amount < 0.1:
+            return
+    except ValueError:
+        return
+
+    user_id = message.from_user.id if message.from_user else 0
+    balance = get_user_balance(user_id)
+    if balance < amount:
+        return
+
+    target_user = None
+    if len(parts) >= 3:
+        potential_target = parts[2].strip()
+        if potential_target.startswith("@") or potential_target.isdigit():
+            target_user = potential_target
+
+    user_balances[user_id] -= amount
+
+    chek_id = generate_check_code()
+    created_cheks[chek_id] = {
+        "id": chek_id,
+        "owner_id": user_id,
+        "amount": amount,
+        "activations": 1,
+        "rem_activations": 1,
+        "password": None,
+        "only_premium": False,
+        "activated_users": set(),
+        "target_user": target_user,
+    }
+
+    check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
+    target_info = f" для {target_user}" if target_user else ""
+
+    formatted_amount = f"{amount:.2f}".rstrip("0").rstrip(".")
+    if amount.is_integer():
+        formatted_amount = str(int(amount))
+
+    text = f"<b>💸 Чек на {formatted_amount}${target_info}</b>"
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Получить",
+                    url=check_link,
+                )
+            ]
+        ]
+    )
+    await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+
+
 async def main() -> None:
     bot = Bot(token=TOKEN)
     print("Бот запущен!")
@@ -2456,4 +2527,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-```[cite: 2]
