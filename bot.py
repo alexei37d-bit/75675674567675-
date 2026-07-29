@@ -20,6 +20,9 @@ dp = Dispatcher()
 # Балансы пользователей (по умолчанию 1.00)
 user_balances = {}
 
+# Оборот пользователей
+user_turnover = {}
+
 # Активные игры: user_id -> dict
 active_games = {}
 
@@ -39,12 +42,17 @@ def get_user_balance(user_id: int) -> float:
     return user_balances.setdefault(user_id, 1.00)
 
 
+def get_user_turnover(user_id: int) -> float:
+    return user_turnover.setdefault(user_id, 0.00)
+
+
 def get_game_settings(user_id: int):
     if user_id not in game_settings:
         game_settings[user_id] = {"bet": 0.10, "mines": 3}
     return game_settings[user_id]
 
 
+# Главное Reply-меню
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [
@@ -54,14 +62,20 @@ main_keyboard = ReplyKeyboardMarkup(
             KeyboardButton(
                 text="Играть", icon_custom_emoji_id="5471895876790161593"
             ),
+        ],
+        [
+            KeyboardButton(
+                text="Профиль", icon_custom_emoji_id="5308004189677330658"
+            ),
             KeyboardButton(
                 text="Меню", icon_custom_emoji_id="5469969339144773395"
             ),
-        ]
+        ],
     ],
     resize_keyboard=True,
 )
 
+# Инлайн-клавиатура Кошелька
 wallet_inline_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
         [
@@ -76,6 +90,30 @@ wallet_inline_keyboard = InlineKeyboardMarkup(
                 callback_data="withdraw",
             ),
         ]
+    ]
+)
+
+# Инлайн-клавиатура для Профиля (с кнопкой "Назад")
+profile_inline_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Пополнить",
+                icon_custom_emoji_id="5255805270285653933",
+                callback_data="deposit",
+            ),
+            InlineKeyboardButton(
+                text="Вывести",
+                icon_custom_emoji_id="5255868234506213301",
+                callback_data="withdraw",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="◀ Назад",
+                callback_data="close_profile",
+            )
+        ],
     ]
 )
 
@@ -123,7 +161,6 @@ def get_preview_game_keyboard(user_id: int) -> InlineKeyboardMarkup:
     mines = st["mines"]
 
     keyboard = []
-    # Поле 5х5 из лун
     for _ in range(5):
         row = [
             InlineKeyboardButton(text="🌑", callback_data="locked_cell")
@@ -131,7 +168,6 @@ def get_preview_game_keyboard(user_id: int) -> InlineKeyboardMarkup:
         ]
         keyboard.append(row)
 
-    # Управление под полем
     keyboard.append(
         [
             InlineKeyboardButton(
@@ -223,7 +259,6 @@ def build_game_keyboard(
             )
         keyboard.append(row_buttons)
 
-    # Забрать выигрыш
     if not game_over and len(opened) > 0:
         current_win = game_data["current_win"]
         keyboard.append(
@@ -236,7 +271,6 @@ def build_game_keyboard(
             ]
         )
 
-    # По окончанию игры
     if finished:
         keyboard.append(
             [
@@ -252,7 +286,6 @@ def build_game_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-# Небольшие множители (иксы)
 def calculate_multiplier(mines_count: int, opened_count: int) -> float:
     base = 1.0 + (mines_count * 0.05)
     mult = base**opened_count
@@ -265,9 +298,36 @@ async def command_start_handler(message: Message) -> None:
     user_name = message.from_user.first_name if message.from_user else "Игрок"
 
     get_user_balance(user_id)
+    get_user_turnover(user_id)
 
     text = f'<b><tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> Добро пожаловать, {html.quote(user_name)}!</b>'
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
+
+
+# Хэндлер Профиля
+@dp.message(F.text.in_(["Профиль", "/profile"]))
+async def profile_handler(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    full_name = message.from_user.full_name if message.from_user else "Игрок"
+    balance = get_user_balance(user_id)
+    turnover = get_user_turnover(user_id)
+
+    text = (
+        f'<tg-emoji emoji-id="5308004189677330658">👤</tg-emoji> {html.quote(full_name)}\n'
+        f'ID : {user_id}\n'
+        f'<tg-emoji emoji-id="5310262449121827356">💰</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n'
+        f'<tg-emoji emoji-id="5452042536493288421">📊</tg-emoji> Оборот : {turnover:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>'
+    )
+
+    await message.answer(
+        text=text, parse_mode="HTML", reply_markup=profile_inline_keyboard
+    )
+
+
+# Закрытие профиля при нажатии "Назад"
+@dp.callback_query(F.data == "close_profile")
+async def close_profile_handler(call: CallbackQuery) -> None:
+    await call.message.delete()
 
 
 @dp.message(F.text.in_(["Кошелек", "Баланс", "/wallet", "/balance"]))
@@ -323,13 +383,11 @@ async def back_to_games_handler(call: CallbackQuery, state: FSMContext) -> None:
     )
 
 
-# Нажатие на луны до старта
 @dp.callback_query(F.data == "locked_cell")
 async def locked_cell_handler(call: CallbackQuery) -> None:
     await call.answer("Сначала нажмите «Играть», чтобы начать!", show_alert=True)
 
 
-# Выбор ставки
 @dp.callback_query(F.data == "mines_choose_bet")
 async def mines_choose_bet_handler(
     call: CallbackQuery, state: FSMContext
@@ -383,7 +441,6 @@ async def process_custom_bet(message: Message, state: FSMContext) -> None:
         await message.answer("❌ Введите корректную сумму (например: 0.4 или 1):")
 
 
-# Экран предпросмотра
 @dp.callback_query(F.data == "screen_game_confirm")
 async def screen_game_confirm(call: CallbackQuery, state: FSMContext = None) -> None:
     if state:
@@ -404,7 +461,6 @@ async def screen_game_confirm(call: CallbackQuery, state: FSMContext = None) -> 
     )
 
 
-# Экран выбора / ввода мин
 @dp.callback_query(F.data == "screen_choose_mines")
 async def screen_choose_mines(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(MinesState.waiting_for_custom_mines)
@@ -455,7 +511,6 @@ async def process_custom_mines(message: Message, state: FSMContext) -> None:
         await message.answer("<b>❌ Пожалуйста, введите целое число от 2 до 24:</b>")
 
 
-# Старт игры
 @dp.callback_query(F.data == "start_mines_game")
 async def start_mines_game(call: CallbackQuery) -> None:
     user_id = call.from_user.id
@@ -469,6 +524,7 @@ async def start_mines_game(call: CallbackQuery) -> None:
         return
 
     user_balances[user_id] -= bet
+    user_turnover[user_id] = get_user_turnover(user_id) + bet
 
     mines_positions = set(random.sample(range(FIELD_SIZE), mines_count))
 
@@ -494,7 +550,6 @@ async def start_mines_game(call: CallbackQuery) -> None:
     )
 
 
-# Открытие клеток
 @dp.callback_query(F.data.startswith("open_cell_"))
 async def open_cell_handler(call: CallbackQuery) -> None:
     user_id = call.from_user.id
@@ -511,7 +566,6 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
     game["opened"].add(cell_idx)
 
-    # Взрыв
     if cell_idx in game["mines_positions"]:
         game["game_over"] = True
         text = (
@@ -526,13 +580,11 @@ async def open_cell_handler(call: CallbackQuery) -> None:
         del active_games[user_id]
         return
 
-    # Успешный ход
     opened_count = len(game["opened"])
     mult = calculate_multiplier(game["mines_count"], opened_count)
     current_win = game["bet"] * mult
     game["current_win"] = current_win
 
-    # Выиграл все безопасные клетки
     if opened_count == (FIELD_SIZE - game["mines_count"]):
         game["game_over"] = True
         user_balances[user_id] = get_user_balance(user_id) + current_win
@@ -548,7 +600,6 @@ async def open_cell_handler(call: CallbackQuery) -> None:
         del active_games[user_id]
         return
 
-    # Продолжение
     text = (
         f'<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Мины\n\n'
         f'Множитель: x{mult:.2f}\n'
@@ -559,7 +610,6 @@ async def open_cell_handler(call: CallbackQuery) -> None:
     )
 
 
-# Забрать деньги
 @dp.callback_query(F.data == "cashout_mines")
 async def cashout_mines_handler(call: CallbackQuery) -> None:
     user_id = call.from_user.id
