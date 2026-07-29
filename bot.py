@@ -1002,11 +1002,11 @@ async def chek_delete_handler(call: CallbackQuery) -> None:
         )
 
         del created_cheks[chek_id]
-        await call.answer(
-            "🗑 Чек успешно удален, средства возвращены на баланс!",
-            show_alert=True,
-        )
-        await open_cheks_menu_handler(call, None)
+
+        try:
+            await call.message.delete()
+        except TelegramBadRequest:
+            pass
 
 
 @dp.callback_query(F.data == "chek_active_list")
