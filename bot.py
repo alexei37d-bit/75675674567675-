@@ -1179,7 +1179,7 @@ async def activate_chek_btn_handler(
 
     if chek.get("only_premium") and not getattr(user, "is_premium", False):
         await call.answer(
-            "Этот чек доступен только дял премиум-пользователей !",
+            "Этот чек доступен только для премиум-пользователей !",
             show_alert=True,
         )
         return
@@ -1187,7 +1187,7 @@ async def activate_chek_btn_handler(
     if chek.get("password"):
         await state.update_data(target_chek_id=chek_id)
         await state.set_state(ChekState.waiting_for_check_pass_input)
-        text = "<b>Введите пароль дял использования чека:</b>"
+        text = "<b>Введите пароль для использования чека:</b>"
         await call.message.answer(text, parse_mode="HTML")
         await call.answer()
         return
@@ -1236,7 +1236,7 @@ async def process_check_pass_input(
 
     pwd_input = message.text.strip()
     if pwd_input != chek["password"]:
-        await message.answer("<b>❌ Неверный пароль! Попробуйте снова:</b>")
+        await message.answer("❌ Неверный пароль! Попробуйте снова:")
         return
 
     await complete_chek_activation(message, user, chek, state)
