@@ -326,7 +326,7 @@ async def back_to_games_handler(call: CallbackQuery, state: FSMContext) -> None:
 # Нажатие на луны до старта
 @dp.callback_query(F.data == "locked_cell")
 async def locked_cell_handler(call: CallbackQuery) -> None:
-    await call.answer("<b>Сначала нажмите «Играть», чтобы начать!</b>", show_alert=True)
+    await call.answer("Сначала нажмите «Играть», чтобы начать!", show_alert=True)
 
 
 # Выбор ставки
@@ -499,7 +499,7 @@ async def start_mines_game(call: CallbackQuery) -> None:
 async def open_cell_handler(call: CallbackQuery) -> None:
     user_id = call.from_user.id
     if user_id not in active_games or active_games[user_id]["game_over"]:
-        await call.answer("<b>Игра завершена.</b>", show_alert=True)
+        await call.answer("Игра завершена.", show_alert=True)
         return
 
     cell_idx = int(call.data.split("_")[2])
@@ -550,7 +550,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
     # Продолжение
     text = (
-        f"<b>🎁 Отлично!\n\n"
+        f"<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Мины\n\n"
         f"Множитель: x{mult:.2f}\n"
         f"Текущий выигрыш: {current_win:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
     )
@@ -564,7 +564,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 async def cashout_mines_handler(call: CallbackQuery) -> None:
     user_id = call.from_user.id
     if user_id not in active_games or active_games[user_id]["game_over"]:
-        await call.answer("<b>Игра не найдена.</b>", show_alert=True)
+        await call.answer("Игра не найдена.", show_alert=True)
         return
 
     game = active_games[user_id]
