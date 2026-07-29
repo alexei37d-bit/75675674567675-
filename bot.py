@@ -550,7 +550,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
     # Продолжение
     text = (
-        f"<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Мины\n\n"
+        f"<tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Мины\n\n"
         f"Множитель: x{mult:.2f}\n"
         f"Текущий выигрыш: {current_win:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
     )
