@@ -156,13 +156,13 @@ def get_bet_selection_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="0.1", callback_data="select_bet_0.1"
+                    text="0.1$", callback_data="select_bet_0.1"
                 ),
                 InlineKeyboardButton(
-                    text="0.5", callback_data="select_bet_0.5"
+                    text="0.5$", callback_data="select_bet_0.5"
                 ),
                 InlineKeyboardButton(
-                    text="1", callback_data="select_bet_1.0"
+                    text="1$", callback_data="select_bet_1.0"
                 ),
             ],
             [
