@@ -74,7 +74,6 @@ wallet_inline_keyboard = InlineKeyboardMarkup(
     ]
 )
 
-# Главное меню игр с эмодзи ID 5452018153963948977
 games_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
         [
@@ -112,32 +111,42 @@ def get_bet_selection_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-# ЭКРАН 2: Подтверждение параметров перед игрой
-def get_mines_setup_keyboard(user_id: int) -> InlineKeyboardMarkup:
+# ЭКРАН 2: Неактивное поле 5х5 с 3 кнопками управления снизу
+def get_preview_game_keyboard(user_id: int) -> InlineKeyboardMarkup:
     st = get_game_settings(user_id)
     bet = st["bet"]
     mines = st["mines"]
 
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=f"💣 Количество мин: {mines}",
-                    callback_data="screen_choose_mines",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=f"▶ Играть ({bet:.2f}$)", callback_data="start_mines_game"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="◀ Изменить ставку", callback_data="mines_choose_bet"
-                )
-            ],
+    keyboard = []
+    # Заблокированное поле 5х5
+    for _ in range(5):
+        row = [
+            InlineKeyboardButton(text="🔒", callback_data="locked_cell")
+            for _ in range(5)
+        ]
+        keyboard.append(row)
+
+    # 1 кнопка сверху
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                text=f"▶ Играть ({bet:.2f}$)", callback_data="start_mines_game"
+            )
         ]
     )
+    # 2 кнопки снизу (слева и справа)
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                text=f"💣 Мин: {mines}", callback_data="screen_choose_mines"
+            ),
+            InlineKeyboardButton(
+                text="◀ Ставка", callback_data="mines_choose_bet"
+            ),
+        ]
+    )
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
 # ЭКРАН 3: Выбор количества мин
@@ -178,7 +187,7 @@ def get_mines_count_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-# Генерация поля 5x5
+# Поле во время активной игры
 def build_game_keyboard(
     game_data: dict, finished: bool = False
 ) -> InlineKeyboardMarkup:
@@ -208,7 +217,7 @@ def build_game_keyboard(
             )
         keyboard.append(row_buttons)
 
-    # Забрать выигрыш (если игра еще активна и открыта хотя бы 1 клетка)
+    # Забрать выигрыш
     if not game_over and len(opened) > 0:
         current_win = game_data["current_win"]
         keyboard.append(
@@ -220,7 +229,7 @@ def build_game_keyboard(
             ]
         )
 
-    # Если игра окончена — кнопки для нового раунда
+    # Если игра окончена
     if finished:
         keyboard.append(
             [
@@ -236,13 +245,12 @@ def build_game_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
+# Уменьшенный расчёт иксов (коэффициент возрастает значительно медленнее)
 def calculate_multiplier(mines_count: int, opened_count: int) -> float:
-    mult = 1.0
-    safe_cells = FIELD_SIZE - mines_count
-    for i in range(opened_count):
-        mult *= safe_cells / (FIELD_SIZE - i)
-        safe_cells -= 1
-    return max(round(1 / mult, 2), 1.01)
+    # Базовый уменьшенный шаг прироста коэффициента
+    base = 1.0 + (mines_count * 0.03)
+    mult = base ** opened_count
+    return max(round(mult, 2), 1.01)
 
 
 @dp.message(CommandStart())
@@ -250,7 +258,6 @@ async def command_start_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
     user_name = message.from_user.first_name if message.from_user else "Игрок"
 
-    # Выдаем стартовый баланс 1.00$ новому пользователю
     if user_id not in user_balances:
         user_balances[user_id] = 1.00
 
@@ -311,7 +318,13 @@ async def back_to_games_handler(call: CallbackQuery, state: FSMContext) -> None:
     )
 
 
-# 1. Шаг: Выбор ставки
+# Заблокированные клетки до старта
+@dp.callback_query(F.data == "locked_cell")
+async def locked_cell_handler(call: CallbackQuery) -> None:
+    await call.answer("🔒 Сначала нажмите «Играть», чтобы начать!", show_alert=True)
+
+
+# Выбор ставки
 @dp.callback_query(F.data == "mines_choose_bet")
 async def mines_choose_bet_handler(
     call: CallbackQuery, state: FSMContext
@@ -351,37 +364,36 @@ async def process_custom_bet(message: Message, state: FSMContext) -> None:
         await state.clear()
 
         text = (
-            f"<b>Ставка установлена: {st['bet']:.2f}$</b>\n\n"
-            f"Текущее количество мин: <b>{st['mines']}</b>"
+            f"🎯 <b>Подготовка к игре «Мины»</b>\n\n"
+            f"Ставка: <b>{st['bet']:.2f}$</b> | Мин: <b>{st['mines']}</b>"
         )
         await message.answer(
             text=text,
             parse_mode="HTML",
-            reply_markup=get_mines_setup_keyboard(user_id),
+            reply_markup=get_preview_game_keyboard(user_id),
         )
     except ValueError:
         await message.answer("❌ Пожалуйста, введите корректное число (например: 0.4 или 1.5):")
 
 
-# 2. Шаг: Подтверждение параметров перед стартом
+# Экран предпросмотра поля перед стартом
 @dp.callback_query(F.data == "screen_game_confirm")
 async def screen_game_confirm(call: CallbackQuery) -> None:
     user_id = call.from_user.id
     st = get_game_settings(user_id)
 
     text = (
-        f"<b>🎯 Подготовка к игре «Мины»</b>\n\n"
-        f"Ставка: <b>{st['bet']:.2f}$</b>\n"
-        f"Количество мин: <b>{st['mines']}</b>"
+        f"🎯 <b>Подготовка к игре «Мины»</b>\n\n"
+        f"Ставка: <b>{st['bet']:.2f}$</b> | Мин: <b>{st['mines']}</b>"
     )
     await call.message.edit_text(
         text=text,
         parse_mode="HTML",
-        reply_markup=get_mines_setup_keyboard(user_id),
+        reply_markup=get_preview_game_keyboard(user_id),
     )
 
 
-# 3. Шаг: Выбор количества мин
+# Выбор мин
 @dp.callback_query(F.data == "screen_choose_mines")
 async def screen_choose_mines(call: CallbackQuery) -> None:
     text = "💣 <b>Выберите количество мин на поле (от 2 до 24):</b>"
@@ -439,7 +451,7 @@ async def start_mines_game(call: CallbackQuery) -> None:
     )
 
 
-# Нажатие на клетку
+# Открытие клеток
 @dp.callback_query(F.data.startswith("open_cell_"))
 async def open_cell_handler(call: CallbackQuery) -> None:
     user_id = call.from_user.id
@@ -456,7 +468,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
     game["opened"].add(cell_idx)
 
-    # Наступил на мину
+    # Взрыв
     if cell_idx in game["mines_positions"]:
         game["game_over"] = True
         text = (
@@ -471,13 +483,13 @@ async def open_cell_handler(call: CallbackQuery) -> None:
         del active_games[user_id]
         return
 
-    # Открыл безопасную клетку
+    # Успешный ход
     opened_count = len(game["opened"])
     mult = calculate_multiplier(game["mines_count"], opened_count)
     current_win = game["bet"] * mult
     game["current_win"] = current_win
 
-    # Выиграл все безопасные клетки
+    # Полная победа
     if opened_count == (FIELD_SIZE - game["mines_count"]):
         game["game_over"] = True
         user_balances[user_id] += current_win
@@ -493,7 +505,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
         del active_games[user_id]
         return
 
-    # Продолжает играть
+    # Продолжение
     text = (
         f"💎 <b>Отлично!</b> Клетка безопасна.\n\n"
         f"Множитель: <b>x{mult:.2f}</b>\n"
@@ -504,7 +516,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
     )
 
 
-# Кнопка «Забрать деньги»
+# Забрать деньги
 @dp.callback_query(F.data == "cashout_mines")
 async def cashout_mines_handler(call: CallbackQuery) -> None:
     user_id = call.from_user.id
