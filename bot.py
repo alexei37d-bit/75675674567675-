@@ -228,10 +228,6 @@ def get_chek_amount_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
-    chek = created_cheks.get(chek_id, {})
-    has_pass = "Да" if chek.get("password") else "Нет"
-    only_premium = "Да" if chek.get("only_premium") else "Нет"
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -242,13 +238,15 @@ def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="⚙️ Установить ограничения",
+                    text="Установить ограничения",
+                    icon_custom_emoji_id="5312462735097764089",
                     callback_data=f"chek_limits_menu:{chek_id}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="🗑 Удалить чек",
+                    text="Удалить чек",
+                    icon_custom_emoji_id="5296410453742753454",
                     callback_data=f"chek_delete:{chek_id}",
                 )
             ],
@@ -263,27 +261,35 @@ def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
 
 def get_chek_limits_keyboard(chek_id: str) -> InlineKeyboardMarkup:
     chek = created_cheks.get(chek_id, {})
-    pass_text = (
-        "🔐 Изменить пароль"
-        if chek.get("password")
-        else "🔑 Поставить пароль"
-    )
+    
+    if chek.get("password"):
+        pass_text = "Удалить пароль"
+        pass_emoji = "5444856076954520455"
+        pass_cbd = f"chek_remove_pass:{chek_id}"
+    else:
+        pass_text = "Поставить пароль"
+        pass_emoji = "5312281637801729565"
+        pass_cbd = f"chek_set_pass:{chek_id}"
+
     prem_text = (
-        "⭐ Для всех игроков"
+        "Для всех игроков"
         if chek.get("only_premium")
-        else "⭐ Только для TG Premium"
+        else "Только для TG Premium"
     )
 
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=pass_text, callback_data=f"chek_set_pass:{chek_id}"
+                    text=pass_text,
+                    icon_custom_emoji_id=pass_emoji,
+                    callback_data=pass_cbd,
                 )
             ],
             [
                 InlineKeyboardButton(
                     text=prem_text,
+                    icon_custom_emoji_id="5303170015007119865",
                     callback_data=f"chek_toggle_premium:{chek_id}",
                 )
             ],
@@ -520,7 +526,6 @@ def get_preview_tower_keyboard(
     keyboard = []
     for floor_idx in range(TOWER_FLOORS):
         x_mult = calculate_tower_multiplier(traps, floor_idx + 1)
-        # Иксы сжаты чуть меньше
         row = [
             InlineKeyboardButton(
                 text=f"x{x_mult:.1f}", callback_data="locked_cell"
@@ -753,7 +758,7 @@ async def process_chek_quick_amount(
 
     max_acts = int(balance // amount)
     text = (
-        f"<b><tg-emoji emoji-id=\"5307773751796996779\">🎟</tg-emoji> Введите количество активаций чека:\n\n"
+        f'<b><tg-emoji emoji-id="5307773751796996779">🎟</tg-emoji> Введите количество активаций чека:\n\n'
         f"Сумма 1 активации: {amount:.2f} $\n"
         f"Максимально доступно активаций: {max_acts}</b>"
     )
@@ -787,7 +792,7 @@ async def process_chek_amount_input(
 
         max_acts = int(balance // amount)
         text = (
-            f"<b><tg-emoji emoji-id=\"5307773751796996779\">🎟</tg-emoji> Введите количество активаций чека:\n\n"
+            f'<b><tg-emoji emoji-id="5307773751796996779">🎟</tg-emoji> Введите количество активаций чека:\n\n'
             f"Сумма 1 активации: {amount:.2f} $\n"
             f"Максимально доступно активаций: {max_acts}</b>"
         )
@@ -844,7 +849,7 @@ async def process_chek_activations_input(
             title_str = f"Чек на {amount:.2f}$ на {activations} активаций"
 
         text = (
-            f"<b>🎉 {title_str} успешно создан!\n\n"
+            f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> {title_str} успешно создан!\n\n'
             f"Код чека: <code>{chek_id}</code></b>"
         )
 
@@ -876,7 +881,7 @@ async def chek_manage_handler(call: CallbackQuery) -> None:
         title_str = f"Чек на {amount:.2f}$ на {activations} активаций"
 
     text = (
-        f"<b>⚙️ Управление: {title_str}\n\n"
+        f'<b><tg-emoji emoji-id="5451807640436903198">🎰</tg-emoji> Управление: {title_str}\n\n'
         f"Код чека: <code>{chek_id}</code>\n"
         f"Осталось активаций: {chek['rem_activations']}/{activations}</b>"
     )
@@ -896,7 +901,7 @@ async def chek_limits_menu_handler(call: CallbackQuery) -> None:
     only_prem = "Да" if chek["only_premium"] else "Нет"
 
     text = (
-        f"<b>⚙️ Настройка ограничений чека <code>{chek_id}</code>:\n\n"
+        f'<b><tg-emoji emoji-id="5451807640436903198">🎰</tg-emoji> Настройка ограничений чека <code>{chek_id}</code>:\n\n'
         f"• Пароль: {has_pass}\n"
         f"• Только Telegram Premium: {only_prem}</b>"
     )
@@ -921,6 +926,17 @@ async def chek_set_pass_start(call: CallbackQuery, state: FSMContext) -> None:
         ]
     )
     await safe_edit_message(call, text, kb)
+
+
+@dp.callback_query(F.data.startswith("chek_remove_pass:"))
+async def chek_remove_pass_handler(call: CallbackQuery) -> None:
+    chek_id = call.data.split(":")[1]
+    chek = created_cheks.get(chek_id)
+
+    if chek:
+        chek["password"] = None
+        await call.answer("🔓 Пароль успешно удален!", show_alert=True)
+        await chek_limits_menu_handler(call)
 
 
 @dp.message(ChekState.waiting_for_password)
@@ -958,7 +974,6 @@ async def chek_delete_handler(call: CallbackQuery) -> None:
     chek = created_cheks.get(chek_id)
 
     if chek:
-        # Возврат средств за неиспользованные активации
         rem_money = chek["amount"] * chek["rem_activations"]
         user_balances[chek["owner_id"]] = (
             get_user_balance(chek["owner_id"]) + rem_money
