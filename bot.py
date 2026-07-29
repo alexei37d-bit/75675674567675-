@@ -550,9 +550,9 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
     # Продолжение
     text = (
-        f"<tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Мины\n\n"
-        f"Множитель: x{mult:.2f}\n"
-        f"Текущий выигрыш: {current_win:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
+        f'<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Мины\n\n'
+        f'Множитель: x{mult:.2f}\n'
+        f'Текущий выигрыш: {current_win:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
     await call.message.edit_text(
         text=text, parse_mode="HTML", reply_markup=build_game_keyboard(game)
@@ -593,5 +593,7 @@ async def main() -> None:
     await dp.start_polling(bot)
 
 
+if __name__ == "__main__":
+    asyncio.run(main())
 if __name__ == "__main__":
     asyncio.run(main())
