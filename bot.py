@@ -135,7 +135,7 @@ def get_preview_game_keyboard(user_id: int) -> InlineKeyboardMarkup:
     keyboard.append(
         [
             InlineKeyboardButton(
-                text=f"▶ Играть ({bet:.2f})",
+                text=f"Играть {bet:.2f}",
                 icon_custom_emoji_id="5305445793623218874",
                 callback_data="start_mines_game",
             )
@@ -229,7 +229,7 @@ def build_game_keyboard(
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    text=f"💰 Забрать {current_win:.2f}",
+                    text=f"Забрать {current_win:.2f}",
                     icon_custom_emoji_id="5305445793623218874",
                     callback_data="cashout_mines",
                 )
@@ -326,7 +326,7 @@ async def back_to_games_handler(call: CallbackQuery, state: FSMContext) -> None:
 # Нажатие на луны до старта
 @dp.callback_query(F.data == "locked_cell")
 async def locked_cell_handler(call: CallbackQuery) -> None:
-    await call.answer("<b>🌑 Сначала нажмите «Играть», чтобы начать!</b>", show_alert=True)
+    await call.answer("<b>Сначала нажмите «Играть», чтобы начать!</b>", show_alert=True)
 
 
 # Выбор ставки
@@ -550,7 +550,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
     # Продолжение
     text = (
-        f"<b>🎁 Отлично! Клетка безопасна.\n\n"
+        f"<b>🎁 Отлично!\n\n"
         f"Множитель: x{mult:.2f}\n"
         f"Текущий выигрыш: {current_win:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
     )
