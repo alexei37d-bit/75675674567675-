@@ -1,4 +1,4 @@
-import asyncio
+import asyncioimport asyncio
 import random
 from aiogram import Bot, Dispatcher, F, html
 from aiogram.filters import CommandStart
@@ -17,32 +17,26 @@ TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
 
 dp = Dispatcher()
 
-# Словарь для хранения балансов пользователей (по умолчанию 0.00)
+# Балансы пользователей (по умолчанию 0.00)
 user_balances = {}
 
-# Хранилище активных игр: user_id -> dict
+# Активные игры: user_id -> dict
 active_games = {}
 
+# Параметры ставок перед игрой: user_id -> dict
+game_settings = {}
 
-# Состояния FSM для ввода произвольной ставки
+
 class MinesState(StatesGroup):
     waiting_for_custom_bet = State()
 
 
-# Настройки игры Мины
-DEFAULT_BET = 0.10
-MIN_MINES = 2
-MAX_MINES = 24
-FIELD_SIZE = 25  # Поле 5x5
-
-
-# Временный выбор параметров перед стартом игры (user_id -> dict)
-game_settings = {}
+FIELD_SIZE = 25  # 5x5
 
 
 def get_game_settings(user_id: int):
     if user_id not in game_settings:
-        game_settings[user_id] = {"bet": DEFAULT_BET, "mines": 3}
+        game_settings[user_id] = {"bet": 0.10, "mines": 3}
     return game_settings[user_id]
 
 
@@ -80,21 +74,45 @@ wallet_inline_keyboard = InlineKeyboardMarkup(
     ]
 )
 
-# Клавиатура выбора игр
+# Главное меню игр с эмодзи ID 5452018153963948977
 games_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
         [
             InlineKeyboardButton(
                 text="Мины",
                 icon_custom_emoji_id="5452018153963948977",
-                callback_data="mines_select",
+                callback_data="mines_choose_bet",
             )
         ]
     ]
 )
 
 
-# Генерация клавиатуры настроек перед игрой
+# ЭКРАН 1: Выбор ставки
+def get_bet_selection_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="0.1$", callback_data="select_bet_0.1"
+                ),
+                InlineKeyboardButton(
+                    text="0.5$", callback_data="select_bet_0.5"
+                ),
+                InlineKeyboardButton(
+                    text="1$", callback_data="select_bet_1.0"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="◀ Назад", callback_data="back_to_games"
+                )
+            ],
+        ]
+    )
+
+
+# ЭКРАН 2: Подтверждение параметров перед игрой
 def get_mines_setup_keyboard(user_id: int) -> InlineKeyboardMarkup:
     st = get_game_settings(user_id)
     bet = st["bet"]
@@ -104,16 +122,8 @@ def get_mines_setup_keyboard(user_id: int) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="0.1$", callback_data="set_bet_0.1"
-                ),
-                InlineKeyboardButton(
-                    text="0.5$", callback_data="set_bet_0.5"
-                ),
-                InlineKeyboardButton(text="1$", callback_data="set_bet_1.0"),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=f"💣 Мин: {mines}", callback_data="change_mines_count"
+                    text=f"💣 Количество мин: {mines}",
+                    callback_data="screen_choose_mines",
                 )
             ],
             [
@@ -121,12 +131,57 @@ def get_mines_setup_keyboard(user_id: int) -> InlineKeyboardMarkup:
                     text=f"▶ Играть ({bet:.2f}$)", callback_data="start_mines_game"
                 )
             ],
+            [
+                InlineKeyboardButton(
+                    text="◀ Изменить ставку", callback_data="mines_choose_bet"
+                )
+            ],
         ]
     )
 
 
-# Генерация игрового поля 5x5
-def build_game_keyboard(game_data: dict) -> InlineKeyboardMarkup:
+# ЭКРАН 3: Выбор количества мин
+def get_mines_count_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="2", callback_data="set_mines_cnt_2"
+                ),
+                InlineKeyboardButton(
+                    text="3", callback_data="set_mines_cnt_3"
+                ),
+                InlineKeyboardButton(
+                    text="5", callback_data="set_mines_cnt_5"
+                ),
+                InlineKeyboardButton(
+                    text="10", callback_data="set_mines_cnt_10"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="15", callback_data="set_mines_cnt_15"
+                ),
+                InlineKeyboardButton(
+                    text="20", callback_data="set_mines_cnt_20"
+                ),
+                InlineKeyboardButton(
+                    text="24", callback_data="set_mines_cnt_24"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="◀ Назад", callback_data="screen_game_confirm"
+                )
+            ],
+        ]
+    )
+
+
+# Генерация поля 5x5
+def build_game_keyboard(
+    game_data: dict, finished: bool = False
+) -> InlineKeyboardMarkup:
     keyboard = []
     opened = game_data["opened"]
     game_over = game_data["game_over"]
@@ -153,7 +208,7 @@ def build_game_keyboard(game_data: dict) -> InlineKeyboardMarkup:
             )
         keyboard.append(row_buttons)
 
-    # Если игра активна и угадан хотя бы 1 кристалл — добавляем кнопку забрать выигрыш
+    # Забрать выигрыш
     if not game_over and len(opened) > 0:
         current_win = game_data["current_win"]
         keyboard.append(
@@ -165,10 +220,22 @@ def build_game_keyboard(game_data: dict) -> InlineKeyboardMarkup:
             ]
         )
 
+    # Если игра окончена
+    if finished:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="🔄 Сыграть снова", callback_data="screen_game_confirm"
+                ),
+                InlineKeyboardButton(
+                    text="◀ Меню", callback_data="mines_choose_bet"
+                ),
+            ]
+        )
+
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-# Расчет коэффициента выигрыша
 def calculate_multiplier(mines_count: int, opened_count: int) -> float:
     mult = 1.0
     safe_cells = FIELD_SIZE - mines_count
@@ -184,10 +251,9 @@ async def command_start_handler(message: Message) -> None:
     user_name = message.from_user.first_name if message.from_user else "Игрок"
 
     if user_id not in user_balances:
-        user_balances[user_id] = 10.00  # Для теста дадим начальный баланс
+        user_balances[user_id] = 0.00
 
     text = f'<b><tg-emoji emoji-id="5472419592217332357">🔥</tg-emoji> Добро пожаловать, {html.quote(user_name)}!</b>'
-
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
 
 
@@ -200,7 +266,6 @@ async def wallet_handler(message: Message) -> None:
         f'<b><tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> '
         f'Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
-
     await message.answer(
         text=text, parse_mode="HTML", reply_markup=wallet_inline_keyboard
     )
@@ -215,7 +280,6 @@ async def play_handler(message: Message) -> None:
         '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n\n'
         f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
-
     await message.answer(text=text, parse_mode="HTML", reply_markup=games_keyboard)
 
 
@@ -228,56 +292,50 @@ async def menu_handler(message: Message) -> None:
         '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
         f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
-
     await message.answer(text=text, parse_mode="HTML")
 
 
-# Меню настроек игры "Мины"
-@dp.callback_query(F.data == "mines_select")
-async def mines_select_handler(call: CallbackQuery) -> None:
+@dp.callback_query(F.data == "back_to_games")
+async def back_to_games_handler(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
     user_id = call.from_user.id
-    st = get_game_settings(user_id)
+    balance = user_balances.get(user_id, 0.00)
 
     text = (
-        f'<tg-emoji emoji-id="5451754391432366821">💰</tg-emoji> Выберите ставку:\n'
-        f'<i>(нажмите на одну из кнопок ниже или напишите сумму ставки в чат)</i>\n\n'
-        f'Текущая ставка: <b>{st["bet"]:.2f}$</b>\n'
-        f'Количество мин: <b>{st["mines"]}</b>'
+        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n\n'
+        f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
-
     await call.message.edit_text(
-        text=text,
-        parse_mode="HTML",
-        reply_markup=get_mines_setup_keyboard(user_id),
+        text=text, parse_mode="HTML", reply_markup=games_keyboard
     )
 
 
-# Обработчики быстрого выбора ставки
-@dp.callback_query(F.data.startswith("set_bet_"))
-async def set_bet_handler(call: CallbackQuery) -> None:
+# 1. Шаг: Выбор ставки
+@dp.callback_query(F.data == "mines_choose_bet")
+async def mines_choose_bet_handler(
+    call: CallbackQuery, state: FSMContext
+) -> None:
+    await state.set_state(MinesState.waiting_for_custom_bet)
+    text = (
+        '<tg-emoji emoji-id="5451754391432366821">💰</tg-emoji> Выберите ставку:\n'
+        "<i>Или напишите сумму ставки в чат</i>"
+    )
+    await call.message.edit_text(
+        text=text, parse_mode="HTML", reply_markup=get_bet_selection_keyboard()
+    )
+
+
+@dp.callback_query(F.data.startswith("select_bet_"))
+async def select_bet_quick(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
     user_id = call.from_user.id
     bet = float(call.data.split("_")[2])
-    game_settings[user_id] = get_game_settings(user_id)
-    game_settings[user_id]["bet"] = bet
-
-    await mines_select_handler(call)
-
-
-# Обработчик переключения количества мин
-@dp.callback_query(F.data == "change_mines_count")
-async def change_mines_handler(call: CallbackQuery) -> None:
-    user_id = call.from_user.id
     st = get_game_settings(user_id)
+    st["bet"] = bet
 
-    # Увеличиваем мин, если больше 24 — сбрасываем до 2
-    st["mines"] += 1
-    if st["mines"] > MAX_MINES:
-        st["mines"] = MIN_MINES
-
-    await mines_select_handler(call)
+    await screen_game_confirm(call)
 
 
-# Прием ставки текстом от пользователя
 @dp.message(MinesState.waiting_for_custom_bet)
 async def process_custom_bet(message: Message, state: FSMContext) -> None:
     user_id = message.from_user.id if message.from_user else 0
@@ -292,22 +350,56 @@ async def process_custom_bet(message: Message, state: FSMContext) -> None:
         await state.clear()
 
         text = (
-            f'<tg-emoji emoji-id="5451754391432366821">💰</tg-emoji> Выберите ставку:\n'
-            f'<i>(нажмите на одну из кнопок ниже или напишите сумму ставки в чат)</i>\n\n'
-            f'Текущая ставка: <b>{st["bet"]:.2f}$</b>\n'
-            f'Количество мин: <b>{st["mines"]}</b>'
+            f"<b>Ставка установлена: {st['bet']:.2f}$</b>\n\n"
+            f"Текущее количество мин: <b>{st['mines']}</b>"
         )
         await message.answer(
             text=text,
             parse_mode="HTML",
             reply_markup=get_mines_setup_keyboard(user_id),
         )
-
     except ValueError:
         await message.answer("❌ Пожалуйста, введите корректное число (например: 0.4 или 1.5):")
 
 
-# Старт игры "Мины"
+# 2. Шаг: Главное окно параметров перед стартом
+@dp.callback_query(F.data == "screen_game_confirm")
+async def screen_game_confirm(call: CallbackQuery) -> None:
+    user_id = call.from_user.id
+    st = get_game_settings(user_id)
+
+    text = (
+        f"<b>🎯 Подготовка к игре «Мины»</b>\n\n"
+        f"Ставка: <b>{st['bet']:.2f}$</b>\n"
+        f"Количество мин: <b>{st['mines']}</b>"
+    )
+    await call.message.edit_text(
+        text=text,
+        parse_mode="HTML",
+        reply_markup=get_mines_setup_keyboard(user_id),
+    )
+
+
+# 3. Шаг: Изменение количества мин (сообщение меняется на выбор мин)
+@dp.callback_query(F.data == "screen_choose_mines")
+async def screen_choose_mines(call: CallbackQuery) -> None:
+    text = "💣 <b>Выберите количество мин на поле (от 2 до 24):</b>"
+    await call.message.edit_text(
+        text=text, parse_mode="HTML", reply_markup=get_mines_count_keyboard()
+    )
+
+
+@dp.callback_query(F.data.startswith("set_mines_cnt_"))
+async def set_mines_count(call: CallbackQuery) -> None:
+    user_id = call.from_user.id
+    cnt = int(call.data.split("_")[3])
+    st = get_game_settings(user_id)
+    st["mines"] = cnt
+
+    await screen_game_confirm(call)
+
+
+# Старт игры
 @dp.callback_query(F.data == "start_mines_game")
 async def start_mines_game(call: CallbackQuery) -> None:
     user_id = call.from_user.id
@@ -320,10 +412,8 @@ async def start_mines_game(call: CallbackQuery) -> None:
         await call.answer("❌ Недостаточно средств на балансе!", show_alert=True)
         return
 
-    # Списываем ставку
     user_balances[user_id] -= bet
 
-    # Генерация случайного расположения мин
     mines_positions = set(random.sample(range(FIELD_SIZE), mines_count))
 
     active_games[user_id] = {
@@ -336,9 +426,9 @@ async def start_mines_game(call: CallbackQuery) -> None:
     }
 
     text = (
-        f'💣 <b>Игра началась!</b>\n\n'
-        f'Ставка: <b>{bet:.2f}$</b> | Мин: <b>{mines_count}</b>\n'
-        f'Выберите клетку:'
+        f"💣 <b>Игра началась!</b>\n\n"
+        f"Ставка: <b>{bet:.2f}$</b> | Мин: <b>{mines_count}</b>\n"
+        f"Выберите клетку:"
     )
 
     await call.message.edit_text(
@@ -353,7 +443,7 @@ async def start_mines_game(call: CallbackQuery) -> None:
 async def open_cell_handler(call: CallbackQuery) -> None:
     user_id = call.from_user.id
     if user_id not in active_games or active_games[user_id]["game_over"]:
-        await call.answer("Игра завершена или не найдена.", show_alert=True)
+        await call.answer("Игра завершена.", show_alert=True)
         return
 
     cell_idx = int(call.data.split("_")[2])
@@ -365,55 +455,55 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
     game["opened"].add(cell_idx)
 
-    # Если наступили на мину
+    # Подорвался
     if cell_idx in game["mines_positions"]:
         game["game_over"] = True
         text = (
-            f'💥 <b>Вы подорвались на мине!</b>\n\n'
-            f'Ваша ставка <b>{game["bet"]:.2f}$</b> сгорела.'
+            f"💥 <b>Вы подорвались на мине!</b>\n\n"
+            f"Ваша ставка <b>{game['bet']:.2f}$</b> сгорела."
         )
         await call.message.edit_text(
             text=text,
             parse_mode="HTML",
-            reply_markup=build_game_keyboard(game),
+            reply_markup=build_game_keyboard(game, finished=True),
         )
         del active_games[user_id]
         return
 
-    # Если открыли безопасную клетку
+    # Открыл безопасную
     opened_count = len(game["opened"])
     mult = calculate_multiplier(game["mines_count"], opened_count)
     current_win = game["bet"] * mult
     game["current_win"] = current_win
 
-    # Если открыли все безопасные клетки
+    # Победил полностью
     if opened_count == (FIELD_SIZE - game["mines_count"]):
         game["game_over"] = True
         user_balances[user_id] += current_win
         text = (
-            f'🎉 <b>Поздравляем! Вы открыли все безопасные клетки!</b>\n\n'
-            f'Ваш выигрыш: <b>{current_win:.2f}$</b>'
+            f"🎉 <b>Поздравляем! Вы открыли все безопасные клетки!</b>\n\n"
+            f"Ваш выигрыш: <b>{current_win:.2f}$</b>"
         )
         await call.message.edit_text(
             text=text,
             parse_mode="HTML",
-            reply_markup=build_game_keyboard(game),
+            reply_markup=build_game_keyboard(game, finished=True),
         )
         del active_games[user_id]
         return
 
-    # Продолжение игры
+    # Продолжает играть
     text = (
-        f'💎 <b>Отлично!</b> Клетка безопасна.\n\n'
-        f'Множитель: <b>x{mult:.2f}</b>\n'
-        f'Текущий выигрыш: <b>{current_win:.2f}$</b>'
+        f"💎 <b>Отлично!</b> Клетка безопасна.\n\n"
+        f"Множитель: <b>x{mult:.2f}</b>\n"
+        f"Текущий выигрыш: <b>{current_win:.2f}$</b>"
     )
     await call.message.edit_text(
         text=text, parse_mode="HTML", reply_markup=build_game_keyboard(game)
     )
 
 
-# Кнопка "Забрать деньги"
+# Кнопка «Забрать деньги»
 @dp.callback_query(F.data == "cashout_mines")
 async def cashout_mines_handler(call: CallbackQuery) -> None:
     user_id = call.from_user.id
@@ -425,17 +515,18 @@ async def cashout_mines_handler(call: CallbackQuery) -> None:
     win_amount = game["current_win"]
     game["game_over"] = True
 
-    # Зачисляем выигрыш
     user_balances[user_id] += win_amount
 
     text = (
-        f'💰 <b>Вы успешно забрали выигрыш!</b>\n\n'
-        f'Сумма: <b>{win_amount:.2f}$</b>\n'
-        f'Ваш баланс: <b>{user_balances[user_id]:.2f}$</b>'
+        f"💰 <b>Вы успешно забрали выигрыш!</b>\n\n"
+        f"Сумма: <b>{win_amount:.2f}$</b>\n"
+        f"Ваш баланс: <b>{user_balances[user_id]:.2f}$</b>"
     )
 
     await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=build_game_keyboard(game)
+        text=text,
+        parse_mode="HTML",
+        reply_markup=build_game_keyboard(game, finished=True),
     )
     del active_games[user_id]
 
@@ -446,7 +537,5 @@ async def main() -> None:
     await dp.start_polling(bot)
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
 if __name__ == "__main__":
     asyncio.run(main())
