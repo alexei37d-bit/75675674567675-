@@ -317,7 +317,7 @@ def build_profile_text(user_id: int, full_name: str) -> str:
     turnover = get_user_turnover(user_id)
     return (
         f'<tg-emoji emoji-id="5308004189677330658">👤</tg-emoji> {html.quote(full_name)}\n'
-        f'ID : {user_id}\n'
+        f'<tg-emoji emoji-id=\"5449624985301717991\">💳</tg-emoji> Ваш ID : {user_id}\n'
         f'<tg-emoji emoji-id="5310262449121827356">💰</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n'
         f'<tg-emoji emoji-id="5452042536493288421">📊</tg-emoji> Оборот : {turnover:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>'
     )
