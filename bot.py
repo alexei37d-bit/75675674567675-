@@ -23,7 +23,290 @@ TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
 
 dp = Dispatcher()
 
+# --- АДМИН-ПАНЕЛЬ ---
 ADMIN_IDS = {7921743592}
+
+
+class AdminState(StatesGroup):
+    waiting_for_add_admin = State()
+    waiting_for_add_balance_user = State()
+    waiting_for_add_balance_amount = State()
+    waiting_for_sub_balance_user = State()
+    waiting_for_sub_balance_amount = State()
+    waiting_for_broadcast_text = State()
+
+
+def get_admin_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="➕ Добавить админа", callback_data="admin_add_admin"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💵 Начислить баланс", callback_data="admin_add_balance"
+                ),
+                InlineKeyboardButton(
+                    text="📉 Отнять баланс", callback_data="admin_sub_balance"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="👥 Список пользователей", callback_data="admin_users_list"
+                ),
+                InlineKeyboardButton(
+                    text="📊 Статистика", callback_data="admin_stats"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📢 Рассылка", callback_data="admin_broadcast"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Закрыть", callback_data="admin_close"
+                )
+            ],
+        ]
+    )
+
+
+@dp.message(F.text == "/admin")
+async def admin_panel_handler(message: Message) -> None:
+    user_id = message.from_user.id if message.from_user else 0
+    if user_id not in ADMIN_IDS:
+        return
+
+    await message.answer(
+        "<b>⚙️ Панель администратора:</b>",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard(),
+    )
+
+
+@dp.callback_query(F.data == "admin_close")
+async def admin_close_handler(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+    await state.clear()
+    await call.message.delete()
+
+
+@dp.callback_query(F.data == "admin_add_admin")
+async def admin_add_admin_start(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+    await state.set_state(AdminState.waiting_for_add_admin)
+    await call.message.edit_text(
+        "<b>➕ Введите Telegram ID пользователя, которого хотите сделать админом:</b>",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(AdminState.waiting_for_add_admin)
+async def admin_add_admin_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    try:
+        new_admin_id = int(message.text.strip())
+        ADMIN_IDS.add(new_admin_id)
+        await state.clear()
+        await message.answer(
+            f"<b>✅ Пользователь <code>{new_admin_id}</code> успешно добавлен в список администраторов!</b>",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard(),
+        )
+    except ValueError:
+        await message.answer("<b>❌ Некорректный ID. Введите число:</b>")
+
+
+@dp.callback_query(F.data == "admin_add_balance")
+async def admin_add_balance_start(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+    await state.set_state(AdminState.waiting_for_add_balance_user)
+    await call.message.edit_text(
+        "<b>💵 Введите ID игрока, которому нужно НАЧИСЛИТЬ баланс:</b>",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(AdminState.waiting_for_add_balance_user)
+async def admin_add_balance_user_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    try:
+        target_id = int(message.text.strip())
+        await state.update_data(target_id=target_id)
+        await state.set_state(AdminState.waiting_for_add_balance_amount)
+        await message.answer("<b>💵 Введите сумму для начисления:</b>", parse_mode="HTML")
+    except ValueError:
+        await message.answer("<b>❌ Некорректный ID. Введите число:</b>")
+
+
+@dp.message(AdminState.waiting_for_add_balance_amount)
+async def admin_add_balance_amount_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    try:
+        amount = float(message.text.replace(",", ".").strip())
+        if amount <= 0:
+            raise ValueError
+        data = await state.get_data()
+        target_id = data["target_id"]
+
+        user_balances[target_id] = get_user_balance(target_id) + amount
+        await state.clear()
+        await message.answer(
+            f"<b>✅ Успешно начислено {amount:.2f} $ игроку <code>{target_id}</code>!\n"
+            f"Новый баланс: {user_balances[target_id]:.2f} $</b>",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard(),
+        )
+    except ValueError:
+        await message.answer("<b>❌ Некорректная сумма. Введите положительное число:</b>")
+
+
+@dp.callback_query(F.data == "admin_sub_balance")
+async def admin_sub_balance_start(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+    await state.set_state(AdminState.waiting_for_sub_balance_user)
+    await call.message.edit_text(
+        "<b>📉 Введите ID игрока, у которого нужно ОТНЯТЬ баланс:</b>",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(AdminState.waiting_for_sub_balance_user)
+async def admin_sub_balance_user_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    try:
+        target_id = int(message.text.strip())
+        await state.update_data(target_id=target_id)
+        await state.set_state(AdminState.waiting_for_sub_balance_amount)
+        await message.answer("<b>📉 Введите сумму для списания:</b>", parse_mode="HTML")
+    except ValueError:
+        await message.answer("<b>❌ Некорректный ID. Введите число:</b>")
+
+
+@dp.message(AdminState.waiting_for_sub_balance_amount)
+async def admin_sub_balance_amount_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    try:
+        amount = float(message.text.replace(",", ".").strip())
+        if amount <= 0:
+            raise ValueError
+        data = await state.get_data()
+        target_id = data["target_id"]
+
+        current_bal = get_user_balance(target_id)
+        user_balances[target_id] = max(0.0, current_bal - amount)
+        await state.clear()
+        await message.answer(
+            f"<b>✅ Успешно списано {amount:.2f} $ у игрока <code>{target_id}</code>!\n"
+            f"Новый баланс: {user_balances[target_id]:.2f} $</b>",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard(),
+        )
+    except ValueError:
+        await message.answer("<b>❌ Некорректная сумма. Введите положительное число:</b>")
+
+
+@dp.callback_query(F.data == "admin_users_list")
+async def admin_users_list_handler(call: CallbackQuery) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+
+    if not user_balances:
+        await call.message.edit_text(
+            "<b>👥 Список пользователей пуст.</b>",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard(),
+        )
+        return
+
+    text = "<b>👥 Список пользователей и их балансов:</b>\n\n"
+    for uid, bal in user_balances.items():
+        text += f"• ID: <code>{uid}</code> | Баланс: <code>{bal:.2f} $</code>\n"
+
+    if len(text) > 4000:
+        text = text[:4000] + "\n..."
+
+    await call.message.edit_text(
+        text=text, parse_mode="HTML", reply_markup=get_admin_keyboard()
+    )
+
+
+@dp.callback_query(F.data == "admin_stats")
+async def admin_stats_handler(call: CallbackQuery) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+
+    total_users = len(user_balances)
+    total_balance = sum(user_balances.values())
+    active_games_cnt = len(active_games)
+
+    text = (
+        "<b>📊 Статистика бота:</b>\n\n"
+        f"<b>• Всего пользователей:</b> <code>{total_users}</code>\n"
+        f"<b>• Общая сумма балансов:</b> <code>{total_balance:.2f} $</code>\n"
+        f"<b>• Активных игр сейчас:</b> <code>{active_games_cnt}</code>\n"
+        f"<b>• Администраторов:</b> <code>{len(ADMIN_IDS)}</code>"
+    )
+
+    await call.message.edit_text(
+        text=text, parse_mode="HTML", reply_markup=get_admin_keyboard()
+    )
+
+
+@dp.callback_query(F.data == "admin_broadcast")
+async def admin_broadcast_start(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+    await state.set_state(AdminState.waiting_for_broadcast_text)
+    await call.message.edit_text(
+        "<b>📢 Введите текст для рассылки всем пользователям:</b>",
+        parse_mode="HTML",
+    )
+
+
+@dp.message(AdminState.waiting_for_broadcast_text)
+async def admin_broadcast_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    await state.clear()
+    broadcast_text = message.text
+    success = 0
+    failed = 0
+
+    status_msg = await message.answer("<b>⏳ Рассылка выполняется...</b>", parse_mode="HTML")
+
+    for uid in list(user_balances.keys()):
+        try:
+            await message.bot.send_message(
+                chat_id=uid, text=broadcast_text, parse_mode="HTML"
+            )
+            success += 1
+            await asyncio.sleep(0.05)
+        except Exception:
+            failed += 1
+
+    await status_msg.edit_text(
+        f"<b>📢 Рассылка завершена!</b>\n\n"
+        f"<b>✅ Успешно доставлено:</b> {success}\n"
+        f"<b>❌ Не доставлено:</b> {failed}",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard(),
+    )
+# --- КОНЕЦ АДМИН-ПАНЕЛИ ---
+
 
 user_balances = {}
 user_turnover = {}
@@ -234,6 +517,14 @@ def get_chek_amount_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
+    chek = created_cheks.get(chek_id, {})
+    if chek.get("target_user"):
+        pin_btn_text = "Открепить"
+        pin_cbd = f"chek_unpin_user:{chek_id}"
+    else:
+        pin_btn_text = "Закрепить за пользователем"
+        pin_cbd = f"chek_pin_user:{chek_id}"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -246,6 +537,13 @@ def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
                     icon_custom_emoji_id="5377535110289576661",
                     callback_data=f"chek_copy_link:{chek_id}",
                 ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=pin_btn_text,
+                    icon_custom_emoji_id="5197269100878907942",
+                    callback_data=pin_cbd,
+                )
             ],
             [
                 InlineKeyboardButton(
@@ -286,13 +584,6 @@ def get_chek_limits_keyboard(chek_id: str) -> InlineKeyboardMarkup:
         else "Только для TG Premium"
     )
 
-    if chek.get("target_user"):
-        pin_btn_text = "Открепить"
-        pin_cbd = f"chek_unpin_user:{chek_id}"
-    else:
-        pin_btn_text = "Закрепить за пользователем"
-        pin_cbd = f"chek_pin_user:{chek_id}"
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -307,13 +598,6 @@ def get_chek_limits_keyboard(chek_id: str) -> InlineKeyboardMarkup:
                     text=prem_text,
                     icon_custom_emoji_id="5303170015007119865",
                     callback_data=f"chek_toggle_premium:{chek_id}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=pin_btn_text,
-                    icon_custom_emoji_id="5197269100878907942",
-                    callback_data=pin_cbd,
                 )
             ],
             [
@@ -394,33 +678,13 @@ def get_mines_count_keyboard(owner_id: int) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="1", callback_data=f"set_mines_cnt_1:{owner_id}"
-                ),
-                InlineKeyboardButton(
                     text="2", callback_data=f"set_mines_cnt_2:{owner_id}"
                 ),
                 InlineKeyboardButton(
                     text="3", callback_data=f"set_mines_cnt_3:{owner_id}"
                 ),
                 InlineKeyboardButton(
-                    text="4", callback_data=f"set_mines_cnt_4:{owner_id}"
-                ),
-                InlineKeyboardButton(
                     text="5", callback_data=f"set_mines_cnt_5:{owner_id}"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="6", callback_data=f"set_mines_cnt_6:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="7", callback_data=f"set_mines_cnt_7:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="8", callback_data=f"set_mines_cnt_8:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="9", callback_data=f"set_mines_cnt_9:{owner_id}"
                 ),
                 InlineKeyboardButton(
                     text="10", callback_data=f"set_mines_cnt_10:{owner_id}"
@@ -428,47 +692,10 @@ def get_mines_count_keyboard(owner_id: int) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="11", callback_data=f"set_mines_cnt_11:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="12", callback_data=f"set_mines_cnt_12:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="13", callback_data=f"set_mines_cnt_13:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="14", callback_data=f"set_mines_cnt_14:{owner_id}"
-                ),
-                InlineKeyboardButton(
                     text="15", callback_data=f"set_mines_cnt_15:{owner_id}"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="16", callback_data=f"set_mines_cnt_16:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="17", callback_data=f"set_mines_cnt_17:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="18", callback_data=f"set_mines_cnt_18:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="19", callback_data=f"set_mines_cnt_19:{owner_id}"
                 ),
                 InlineKeyboardButton(
                     text="20", callback_data=f"set_mines_cnt_20:{owner_id}"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="21", callback_data=f"set_mines_cnt_21:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="22", callback_data=f"set_mines_cnt_22:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="23", callback_data=f"set_mines_cnt_23:{owner_id}"
                 ),
                 InlineKeyboardButton(
                     text="24", callback_data=f"set_mines_cnt_24:{owner_id}"
@@ -1023,7 +1250,7 @@ async def chek_pin_user_start(call: CallbackQuery, state: FSMContext) -> None:
             [
                 InlineKeyboardButton(
                     text="◀ Назад",
-                    callback_data=f"chek_limits_menu:{chek_id}",
+                    callback_data=f"chek_manage:{chek_id}",
                 )
             ]
         ]
@@ -1049,7 +1276,7 @@ async def chek_pin_user_process(message: Message, state: FSMContext) -> None:
         await message.answer(
             text,
             parse_mode="HTML",
-            reply_markup=get_chek_limits_keyboard(chek_id),
+            reply_markup=get_chek_manage_keyboard(chek_id),
         )
 
 
@@ -1061,7 +1288,7 @@ async def chek_unpin_user_handler(call: CallbackQuery) -> None:
     if chek:
         chek["target_user"] = None
         await call.answer("Чек откреплен!", show_alert=True)
-        await chek_limits_menu_handler(call)
+        await chek_manage_handler(call)
 
 
 @dp.callback_query(F.data.startswith("chek_limits_menu:"))
@@ -1075,13 +1302,11 @@ async def chek_limits_menu_handler(call: CallbackQuery) -> None:
 
     has_pass = chek["password"] if chek["password"] else "Не установлен"
     only_prem = "Да" if chek["only_premium"] else "Нет"
-    target_info = chek["target_user"] if chek["target_user"] else "Для всех"
 
     text = (
         f'<b><tg-emoji emoji-id="5451807640436903198">🎰</tg-emoji> Настройка ограничений чека <code>{chek_id}</code>:\n\n'
         f"• Пароль: {has_pass}\n"
-        f"• Только Telegram Premium: {only_prem}\n"
-        f"• Закреплен за: {target_info}</b>"
+        f"• Только Telegram Premium: {only_prem}</b>"
     )
     await safe_edit_message(call, text, get_chek_limits_keyboard(chek_id))
 
@@ -1678,7 +1903,7 @@ async def screen_choose_mines(call: CallbackQuery, state: FSMContext) -> None:
 
     await state.set_state(MinesState.waiting_for_custom_mines)
     text = (
-        "<b>💣 Выберите количество мин на поле (от 1 до 24):\n"
+        "<b>💣 Выберите количество мин на поле (от 2 до 24):\n"
         "Или напишите количество мин числом в чат</b>"
     )
     await safe_edit_message(call, text, get_mines_count_keyboard(owner_id))
@@ -1706,7 +1931,7 @@ async def process_custom_mines(message: Message, state: FSMContext) -> None:
     user_id = message.from_user.id if message.from_user else 0
     try:
         cnt = int(message.text.strip())
-        if not (1 <= cnt <= 24):
+        if not (2 <= cnt <= 24):
             raise ValueError
 
         st = get_game_settings(user_id)
@@ -1726,7 +1951,7 @@ async def process_custom_mines(message: Message, state: FSMContext) -> None:
         )
     except ValueError:
         await message.answer(
-            "<b>❌ Пожалуйста, введите целое число от 1 до 24:</b>"
+            "<b>❌ Пожалуйста, введите целое число от 2 до 24:</b>"
         )
 
 
