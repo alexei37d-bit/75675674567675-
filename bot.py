@@ -1,6 +1,7 @@
 import asyncio
 import random
 from aiogram import Bot, Dispatcher, F, html
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -376,8 +377,11 @@ def get_preview_tower_keyboard(user_id: int) -> InlineKeyboardMarkup:
     traps = st["traps"]
 
     keyboard = []
-    for _ in range(TOWER_FLOORS):
-        row = [InlineKeyboardButton(text="🌑", callback_data="locked_cell") for _ in range(5)]
+    # Сверху вниз (8 этаж вверху, 1 этаж внизу)
+    for floor_idx in range(TOWER_FLOORS - 1, -1, -1):
+        x_mult = calculate_tower_multiplier(traps, floor_idx + 1)
+        row = [InlineKeyboardButton(text=f"x{x_mult:.2f}", callback_data="locked_cell")]
+        row.extend([InlineKeyboardButton(text="🌑", callback_data="locked_cell") for _ in range(5)])
         keyboard.append(row)
 
     keyboard.append(
@@ -423,21 +427,39 @@ def build_tower_game_keyboard(game_data: dict, finished: bool = False) -> Inline
     history = game_data["history"]
     game_over = game_data["game_over"]
     trap_positions = game_data["trap_positions"]
+    traps_count = game_data["traps_count"]
 
+    # Строим клавиатуру сверху вниз (от 8 этажа к 1 этажу)
     for floor_idx in range(TOWER_FLOORS - 1, -1, -1):
         row_buttons = []
+        
+        # Кнопка Икса (множителя) слева
+        x_mult = calculate_tower_multiplier(traps_count, floor_idx + 1)
+        row_buttons.append(InlineKeyboardButton(text=f"x{x_mult:.2f}", callback_data="locked_cell"))
+
         is_active_row = (floor_idx == current_floor) and not game_over
+        is_passed = floor_idx < current_floor
+
         for col in range(5):
             if floor_idx in history:
                 chosen_col, is_win = history[floor_idx]
                 if col == chosen_col:
                     text = "🎁" if is_win else "💥"
-                elif game_over and col in trap_positions[floor_idx]:
+                elif col in trap_positions[floor_idx]:
+                    # Показываем мины после того как прошёл ряд или проиграл
+                    text = "💣"
+                else:
+                    text = "🌑"
+                cbd = "locked_cell"
+            elif is_passed:
+                # Если этаж пройден, показываем на нем все мины
+                if col in trap_positions[floor_idx]:
                     text = "💣"
                 else:
                     text = "🌑"
                 cbd = "locked_cell"
             elif game_over:
+                # В случае проигрыша показываем мины
                 if col in trap_positions[floor_idx]:
                     text = "💣"
                 else:
@@ -480,6 +502,17 @@ def build_tower_game_keyboard(game_data: dict, finished: bool = False) -> Inline
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
+async def safe_edit_message(call: CallbackQuery, text: str, reply_markup: InlineKeyboardMarkup):
+    """Вспомогательная функция для безопасного редактирования сообщений без ошибок TelegramBadRequest"""
+    try:
+        await call.message.edit_text(text=text, parse_mode="HTML", reply_markup=reply_markup)
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            await call.answer()
+        else:
+            raise e
+
+
 @dp.message(CommandStart())
 async def command_start_handler(message: Message) -> None:
     user_id = message.from_user.id if message.from_user else 0
@@ -514,9 +547,7 @@ async def open_profile_callback(call: CallbackQuery) -> None:
     full_name = call.from_user.full_name if call.from_user else "Игрок"
 
     text = build_profile_text(user_id, full_name)
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=profile_inline_keyboard
-    )
+    await safe_edit_message(call, text, profile_inline_keyboard)
 
 
 # Закрытие профиля по кнопке "◀ Назад" - теперь возвращает в Главное Меню
@@ -529,9 +560,7 @@ async def close_profile_handler(call: CallbackQuery) -> None:
         '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
         f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=menu_inline_keyboard
-    )
+    await safe_edit_message(call, text, menu_inline_keyboard)
 
 
 # Кошелек через инлайн-кнопку
@@ -544,9 +573,7 @@ async def open_wallet_inline_handler(call: CallbackQuery) -> None:
         f'<b><tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> '
         f'Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=wallet_inline_keyboard
-    )
+    await safe_edit_message(call, text, wallet_inline_keyboard)
 
 
 @dp.message(F.text.in_(["Кошелек", "Баланс", "/wallet", "/balance"]))
@@ -585,14 +612,12 @@ async def back_to_games_handler(call: CallbackQuery, state: FSMContext) -> None:
         '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n\n'
         f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=games_keyboard
-    )
+    await safe_edit_message(call, text, games_keyboard)
 
 
 @dp.callback_query(F.data == "locked_cell")
 async def locked_cell_handler(call: CallbackQuery) -> None:
-    await call.answer("Сначала нажмите «Играть», чтобы начать!", show_alert=True)
+    await call.answer("Нажимайте только на доступные кнопки на текущем этаже!", show_alert=True)
 
 
 @dp.callback_query(F.data == "mines_choose_bet")
@@ -604,9 +629,7 @@ async def mines_choose_bet_handler(
         '<b><tg-emoji emoji-id="5451754391432366821">💰</tg-emoji> Выберите ставку:\n'
         'Или напишите сумму ставки в чат</b>'
     )
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=get_bet_selection_keyboard()
-    )
+    await safe_edit_message(call, text, get_bet_selection_keyboard())
 
 
 @dp.callback_query(F.data.startswith("select_bet_"))
@@ -661,11 +684,7 @@ async def screen_game_confirm(call: CallbackQuery, state: FSMContext = None) -> 
         f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
         f'<b>Выбрано - {st["mines"]} 💣</b>'
     )
-    await call.message.edit_text(
-        text=text,
-        parse_mode="HTML",
-        reply_markup=get_preview_game_keyboard(user_id),
-    )
+    await safe_edit_message(call, text, get_preview_game_keyboard(user_id))
 
 
 @dp.callback_query(F.data == "screen_choose_mines")
@@ -675,9 +694,7 @@ async def screen_choose_mines(call: CallbackQuery, state: FSMContext) -> None:
         '<b>💣 Выберите количество мин на поле (от 2 до 24):\n'
         'Или напишите количество мин числом в чат</b>'
     )
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=get_mines_count_keyboard()
-    )
+    await safe_edit_message(call, text, get_mines_count_keyboard())
 
 
 @dp.callback_query(F.data.startswith("set_mines_cnt_"))
@@ -750,11 +767,7 @@ async def start_mines_game(call: CallbackQuery) -> None:
         f"Выберите клетку:</b>"
     )
 
-    await call.message.edit_text(
-        text=text,
-        parse_mode="HTML",
-        reply_markup=build_game_keyboard(active_games[user_id]),
-    )
+    await safe_edit_message(call, text, build_game_keyboard(active_games[user_id]))
 
 
 @dp.callback_query(F.data.startswith("open_cell_"))
@@ -779,11 +792,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
             f"<b>💥 Вы подорвались на мине!\n\n"
             f"Ваша ставка {game['bet']:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji> сгорела.</b>"
         )
-        await call.message.edit_text(
-            text=text,
-            parse_mode="HTML",
-            reply_markup=build_game_keyboard(game, finished=True),
-        )
+        await safe_edit_message(call, text, build_game_keyboard(game, finished=True))
         del active_games[user_id]
         return
 
@@ -799,11 +808,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
             f"<b>🎉 Поздравляем! Вы открыли все безопасные клетки!\n\n"
             f"Ваш выигрыш: {current_win:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
         )
-        await call.message.edit_text(
-            text=text,
-            parse_mode="HTML",
-            reply_markup=build_game_keyboard(game, finished=True),
-        )
+        await safe_edit_message(call, text, build_game_keyboard(game, finished=True))
         del active_games[user_id]
         return
 
@@ -812,9 +817,7 @@ async def open_cell_handler(call: CallbackQuery) -> None:
         f'Множитель: x{mult:.2f}\n'
         f'Текущий выигрыш: {current_win:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=build_game_keyboard(game)
-    )
+    await safe_edit_message(call, text, build_game_keyboard(game))
 
 
 @dp.callback_query(F.data == "cashout_mines")
@@ -836,11 +839,7 @@ async def cashout_mines_handler(call: CallbackQuery) -> None:
         f"Ваш баланс: {user_balances[user_id]:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
     )
 
-    await call.message.edit_text(
-        text=text,
-        parse_mode="HTML",
-        reply_markup=build_game_keyboard(game, finished=True),
-    )
+    await safe_edit_message(call, text, build_game_keyboard(game, finished=True))
     del active_games[user_id]
 
 
@@ -853,9 +852,7 @@ async def tower_choose_bet_handler(call: CallbackQuery, state: FSMContext) -> No
         '<b><tg-emoji emoji-id="5451754391432366821">💰</tg-emoji> Выберите ставку:\n'
         'Или напишите сумму ставки в чат</b>'
     )
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=get_tower_bet_selection_keyboard()
-    )
+    await safe_edit_message(call, text, get_tower_bet_selection_keyboard())
 
 
 @dp.callback_query(F.data.startswith("select_tower_bet_"))
@@ -910,11 +907,7 @@ async def screen_tower_game_confirm(call: CallbackQuery, state: FSMContext = Non
         f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
         f'<b>Выбрано - {st["traps"]} 💣</b>'
     )
-    await call.message.edit_text(
-        text=text,
-        parse_mode="HTML",
-        reply_markup=get_preview_tower_keyboard(user_id),
-    )
+    await safe_edit_message(call, text, get_preview_tower_keyboard(user_id))
 
 
 @dp.callback_query(F.data == "screen_choose_tower_traps")
@@ -924,9 +917,7 @@ async def screen_choose_tower_traps(call: CallbackQuery, state: FSMContext) -> N
         '<b>💣 Выберите количество мин на ряд (от 1 до 4):\n'
         'Или напишите количество мин числом в чат</b>'
     )
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=get_tower_traps_count_keyboard()
-    )
+    await safe_edit_message(call, text, get_tower_traps_count_keyboard())
 
 
 @dp.callback_query(F.data.startswith("set_tower_traps_cnt_"))
@@ -1002,11 +993,7 @@ async def start_tower_game(call: CallbackQuery) -> None:
         f"Выберите клетку на 1 этаже:</b>"
     )
 
-    await call.message.edit_text(
-        text=text,
-        parse_mode="HTML",
-        reply_markup=build_tower_game_keyboard(active_tower_games[user_id]),
-    )
+    await safe_edit_message(call, text, build_tower_game_keyboard(active_tower_games[user_id]))
 
 
 @dp.callback_query(F.data.startswith("open_tower_"))
@@ -1035,11 +1022,7 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
             f"<b>💥 Вы подорвались на мине!\n\n"
             f"Ваша ставка {game['bet']:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji> сгорела.</b>"
         )
-        await call.message.edit_text(
-            text=text,
-            parse_mode="HTML",
-            reply_markup=build_tower_game_keyboard(game, finished=True),
-        )
+        await safe_edit_message(call, text, build_tower_game_keyboard(game, finished=True))
         del active_tower_games[user_id]
         return
 
@@ -1058,11 +1041,7 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
             f"<b>🎉 Поздравляем! Вы прошли всю башню!\n\n"
             f"Ваш выигрыш: {current_win:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
         )
-        await call.message.edit_text(
-            text=text,
-            parse_mode="HTML",
-            reply_markup=build_tower_game_keyboard(game, finished=True),
-        )
+        await safe_edit_message(call, text, build_tower_game_keyboard(game, finished=True))
         del active_tower_games[user_id]
         return
 
@@ -1071,9 +1050,7 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
         f'Множитель: x{mult:.2f}\n'
         f'Текущий выигрыш: {current_win:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=build_tower_game_keyboard(game)
-    )
+    await safe_edit_message(call, text, build_tower_game_keyboard(game))
 
 
 @dp.callback_query(F.data == "cashout_tower")
@@ -1095,11 +1072,7 @@ async def cashout_tower_handler(call: CallbackQuery) -> None:
         f"Ваш баланс: {user_balances[user_id]:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
     )
 
-    await call.message.edit_text(
-        text=text,
-        parse_mode="HTML",
-        reply_markup=build_tower_game_keyboard(game, finished=True),
-    )
+    await safe_edit_message(call, text, build_tower_game_keyboard(game, finished=True))
     del active_tower_games[user_id]
 
 
@@ -1180,9 +1153,10 @@ async def admin_add_admin_start(call: CallbackQuery, state: FSMContext) -> None:
     if call.from_user.id not in ADMIN_IDS:
         return
     await state.set_state(AdminState.waiting_for_add_admin)
-    await call.message.edit_text(
+    await safe_edit_message(
+        call,
         "<b>➕ Введите Telegram ID пользователя, которого хотите сделать админом:</b>",
-        parse_mode="HTML",
+        None
     )
 
 
@@ -1208,9 +1182,10 @@ async def admin_add_balance_start(call: CallbackQuery, state: FSMContext) -> Non
     if call.from_user.id not in ADMIN_IDS:
         return
     await state.set_state(AdminState.waiting_for_add_balance_user)
-    await call.message.edit_text(
+    await safe_edit_message(
+        call,
         "<b>💵 Введите ID игрока, которому нужно НАЧИСЛИТЬ баланс:</b>",
-        parse_mode="HTML",
+        None
     )
 
 
@@ -1255,9 +1230,10 @@ async def admin_sub_balance_start(call: CallbackQuery, state: FSMContext) -> Non
     if call.from_user.id not in ADMIN_IDS:
         return
     await state.set_state(AdminState.waiting_for_sub_balance_user)
-    await call.message.edit_text(
+    await safe_edit_message(
+        call,
         "<b>📉 Введите ID игрока, у которого нужно ОТНЯТЬ баланс:</b>",
-        parse_mode="HTML",
+        None
     )
 
 
@@ -1304,10 +1280,10 @@ async def admin_users_list_handler(call: CallbackQuery) -> None:
         return
 
     if not user_balances:
-        await call.message.edit_text(
+        await safe_edit_message(
+            call,
             "<b>👥 Список пользователей пуст.</b>",
-            parse_mode="HTML",
-            reply_markup=get_admin_keyboard(),
+            get_admin_keyboard()
         )
         return
 
@@ -1318,9 +1294,7 @@ async def admin_users_list_handler(call: CallbackQuery) -> None:
     if len(text) > 4000:
         text = text[:4000] + "\n..."
 
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=get_admin_keyboard()
-    )
+    await safe_edit_message(call, text, get_admin_keyboard())
 
 
 @dp.callback_query(F.data == "admin_stats")
@@ -1340,9 +1314,7 @@ async def admin_stats_handler(call: CallbackQuery) -> None:
         f"<b>• Администраторов:</b> <code>{len(ADMIN_IDS)}</code>"
     )
 
-    await call.message.edit_text(
-        text=text, parse_mode="HTML", reply_markup=get_admin_keyboard()
-    )
+    await safe_edit_message(call, text, get_admin_keyboard())
 
 
 @dp.callback_query(F.data == "admin_broadcast")
@@ -1350,9 +1322,10 @@ async def admin_broadcast_start(call: CallbackQuery, state: FSMContext) -> None:
     if call.from_user.id not in ADMIN_IDS:
         return
     await state.set_state(AdminState.waiting_for_broadcast_text)
-    await call.message.edit_text(
+    await safe_edit_message(
+        call,
         "<b>📢 Введите текст для рассылки всем пользователям:</b>",
-        parse_mode="HTML",
+        None
     )
 
 
