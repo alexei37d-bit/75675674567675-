@@ -250,7 +250,7 @@ async def admin_stats_handler(call: CallbackQuery) -> None:
 
     total_users = len(user_balances)
     total_balance = sum(user_balances.values())
-    active_games_cnt = len(active_games)
+    active_games_cnt = len(active_games) + len(active_tower_games)
 
     text = (
         "<b>📊 Статистика бота:</b>\n\n"
@@ -318,6 +318,9 @@ user_bets_counter = {}
 
 # Хранилище чеков: check_id -> dict
 created_cheks = {}
+
+# Хранилище активных сообщений/игр пользователя для контроля переключения: user_id -> {"game_type": "mines"/"tower", "chat_id": int, "message_id": int}
+user_active_game_msg = {}
 
 
 class MinesState(StatesGroup):
@@ -584,6 +587,13 @@ def get_chek_limits_keyboard(chek_id: str) -> InlineKeyboardMarkup:
         else "Только для TG Premium"
     )
 
+    if chek.get("target_user"):
+        pin_limit_text = "Открепить чек"
+        pin_limit_cbd = f"chek_unpin_user:{chek_id}"
+    else:
+        pin_limit_text = "Закрепить за пользователем"
+        pin_limit_cbd = f"chek_pin_user:{chek_id}"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -598,6 +608,13 @@ def get_chek_limits_keyboard(chek_id: str) -> InlineKeyboardMarkup:
                     text=prem_text,
                     icon_custom_emoji_id="5303170015007119865",
                     callback_data=f"chek_toggle_premium:{chek_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=pin_limit_text,
+                    icon_custom_emoji_id="5197269100878907942",
+                    callback_data=pin_limit_cbd,
                 )
             ],
             [
@@ -1302,11 +1319,13 @@ async def chek_limits_menu_handler(call: CallbackQuery) -> None:
 
     has_pass = chek["password"] if chek["password"] else "Не установлен"
     only_prem = "Да" if chek["only_premium"] else "Нет"
+    target_info = chek["target_user"] if chek.get("target_user") else "Не закреплен"
 
     text = (
         f'<b><tg-emoji emoji-id="5451807640436903198">🎰</tg-emoji> Настройка ограничений чека <code>{chek_id}</code>:\n\n'
         f"• Пароль: {has_pass}\n"
-        f"• Только Telegram Premium: {only_prem}</b>"
+        f"• Только Telegram Premium: {only_prem}\n"
+        f"• Закреплен за: {target_info}</b>"
     )
     await safe_edit_message(call, text, get_chek_limits_keyboard(chek_id))
 
@@ -1914,7 +1933,7 @@ async def set_mines_count(call: CallbackQuery, state: FSMContext) -> None:
     data_parts = call.data.split(":")
     owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
     if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
+        await call.answer("This is not your game!", show_alert=True)
         return
 
     await state.clear()
@@ -1964,6 +1983,41 @@ async def start_mines_game(call: CallbackQuery) -> None:
         return
 
     user_id = call.from_user.id
+
+    # Проверка на наличие незавершенной игры (Мины или Башня)
+    if user_id in user_active_game_msg:
+        active_info = user_active_game_msg[user_id]
+        prev_game_id = f"{active_info['chat_id']}_{active_info['message_id']}"
+        exists_in_mines = prev_game_id in active_games
+        exists_in_tower = prev_game_id in active_tower_games
+
+        if exists_in_mines or exists_in_tower:
+            existing_game_type = active_info["game_type"]
+            game_name_ru = "Мины" if existing_game_type == "mines" else "Башня"
+            
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text=f"🎮 Вернуться к игре ({game_name_ru})",
+                            callback_data=f"return_to_active_game:{existing_game_type}:{prev_game_id}"
+                        )
+                    ]
+                ]
+            )
+            
+            try:
+                await call.message.edit_text(
+                    "<b>У вас уже есть не законченная игра</b>",
+                    parse_mode="HTML",
+                    reply_markup=kb
+                )
+            except TelegramBadRequest:
+                pass
+            return
+        else:
+            user_active_game_msg.pop(user_id, None)
+
     balance = get_user_balance(user_id)
     st = get_game_settings(user_id)
     bet = st["bet"]
@@ -1995,6 +2049,12 @@ async def start_mines_game(call: CallbackQuery) -> None:
         "game_over": False,
         "current_win": 0.00,
         "rigged": should_rig,
+    }
+
+    user_active_game_msg[user_id] = {
+        "game_type": "mines",
+        "chat_id": call.message.chat.id,
+        "message_id": call.message.message_id
     }
 
     text = (
@@ -2042,6 +2102,12 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
     if cell_idx in game["mines_positions"]:
         game["game_over"] = True
+        user_id = game["owner_id"]
+        if user_id in user_active_game_msg:
+            active_info = user_active_game_msg[user_id]
+            if f"{active_info['chat_id']}_{active_info['message_id']}" == game_id:
+                user_active_game_msg.pop(user_id, None)
+
         text = (
             f"<b>💥 Вы подорвались на мине!\n\n"
             f'Ваша ставка {game["bet"]:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji> сгорела.</b>'
@@ -2060,6 +2126,11 @@ async def open_cell_handler(call: CallbackQuery) -> None:
     if opened_count == (FIELD_SIZE - game["mines_count"]):
         game["game_over"] = True
         user_id = game["owner_id"]
+        if user_id in user_active_game_msg:
+            active_info = user_active_game_msg[user_id]
+            if f"{active_info['chat_id']}_{active_info['message_id']}" == game_id:
+                user_active_game_msg.pop(user_id, None)
+
         user_balances[user_id] = get_user_balance(user_id) + current_win
         text = (
             f"<b>🎉 Поздравляем! Вы открыли все безопасные клетки!\n\n"
@@ -2096,6 +2167,11 @@ async def cashout_mines_handler(call: CallbackQuery) -> None:
     win_amount = game["current_win"]
     game["game_over"] = True
     user_id = game["owner_id"]
+
+    if user_id in user_active_game_msg:
+        active_info = user_active_game_msg[user_id]
+        if f"{active_info['chat_id']}_{active_info['message_id']}" == game_id:
+            user_active_game_msg.pop(user_id, None)
 
     user_balances[user_id] = get_user_balance(user_id) + win_amount
 
@@ -2285,6 +2361,41 @@ async def start_tower_game(call: CallbackQuery) -> None:
         return
 
     user_id = call.from_user.id
+
+    # Проверка на наличие незавершенной игры (Мины или Башня)
+    if user_id in user_active_game_msg:
+        active_info = user_active_game_msg[user_id]
+        prev_game_id = f"{active_info['chat_id']}_{active_info['message_id']}"
+        exists_in_mines = prev_game_id in active_games
+        exists_in_tower = prev_game_id in active_tower_games
+
+        if exists_in_mines or exists_in_tower:
+            existing_game_type = active_info["game_type"]
+            game_name_ru = "Мины" if existing_game_type == "mines" else "Башня"
+            
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text=f"🎮 Вернуться к игре ({game_name_ru})",
+                            callback_data=f"return_to_active_game:{existing_game_type}:{prev_game_id}"
+                        )
+                    ]
+                ]
+            )
+            
+            try:
+                await call.message.edit_text(
+                    "<b>У вас уже есть не законченная игра</b>",
+                    parse_mode="HTML",
+                    reply_markup=kb
+                )
+            except TelegramBadRequest:
+                pass
+            return
+        else:
+            user_active_game_msg.pop(user_id, None)
+
     balance = get_user_balance(user_id)
     st = get_tower_settings(user_id)
     bet = st["bet"]
@@ -2323,6 +2434,12 @@ async def start_tower_game(call: CallbackQuery) -> None:
         "rigged": should_rig,
     }
 
+    user_active_game_msg[user_id] = {
+        "game_type": "tower",
+        "chat_id": call.message.chat.id,
+        "message_id": call.message.message_id
+    }
+
     text = (
         f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Игра началась!\n\n'
         f"Игрок: {html.quote(call.from_user.full_name)}\n"
@@ -2333,6 +2450,63 @@ async def start_tower_game(call: CallbackQuery) -> None:
     await safe_edit_message(
         call, text, build_tower_game_keyboard(active_tower_games[game_id])
     )
+
+
+@dp.callback_query(F.data.startswith("return_to_active_game:"))
+async def return_to_active_game_handler(call: CallbackQuery) -> None:
+    parts = call.data.split(":")
+    game_type = parts[1]
+    game_id = parts[2]
+    user_id = call.from_user.id
+
+    if game_type == "mines":
+        if game_id not in active_games:
+            user_active_game_msg.pop(user_id, None)
+            await call.answer("Игра уже завершена или не найдена.", show_alert=True)
+            return
+        game = active_games[game_id]
+        if not check_owner(call, game["owner_id"]):
+            await call.answer("Это не ваша игра!", show_alert=True)
+            return
+
+        user_active_game_msg[user_id] = {
+            "game_type": "mines",
+            "chat_id": call.message.chat.id,
+            "message_id": call.message.message_id
+        }
+
+        mult = calculate_multiplier(game["mines_count"], len(game["opened"]))
+        text = (
+            f'<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Мины\n\n'
+            f"Множитель: x{mult:.2f}\n"
+            f'Текущий выигрыш: {game["current_win"]:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+        )
+        await safe_edit_message(call, text, build_game_keyboard(game))
+
+    elif game_type == "tower":
+        if game_id not in active_tower_games:
+            user_active_game_msg.pop(user_id, None)
+            await call.answer("Игра уже завершена или не найдена.", show_alert=True)
+            return
+        game = active_tower_games[game_id]
+        if not check_owner(call, game["owner_id"]):
+            await call.answer("Это не ваша игра!", show_alert=True)
+            return
+
+        user_active_game_msg[user_id] = {
+            "game_type": "tower",
+            "chat_id": call.message.chat.id,
+            "message_id": call.message.message_id
+        }
+
+        opened_floors = game["current_floor"]
+        mult = calculate_tower_multiplier(game["traps_count"], max(1, opened_floors))
+        text = (
+            f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня\n\n'
+            f"Множитель: x{mult:.2f}\n"
+            f'Текущий выигрыш: {game["current_win"]:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+        )
+        await safe_edit_message(call, text, build_tower_game_keyboard(game))
 
 
 @dp.callback_query(F.data.startswith("open_tower_"))
@@ -2373,6 +2547,12 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
     if col in traps:
         game["game_over"] = True
         game["history"][floor] = (col, False)
+        user_id = game["owner_id"]
+        if user_id in user_active_game_msg:
+            active_info = user_active_game_msg[user_id]
+            if f"{active_info['chat_id']}_{active_info['message_id']}" == game_id:
+                user_active_game_msg.pop(user_id, None)
+
         text = (
             f"<b>💥 Вы подорвались на мине!\n\n"
             f'Ваша ставка {game["bet"]:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji> сгорела.</b>'
@@ -2394,6 +2574,11 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
     if opened_floors == TOWER_FLOORS:
         game["game_over"] = True
         user_id = game["owner_id"]
+        if user_id in user_active_game_msg:
+            active_info = user_active_game_msg[user_id]
+            if f"{active_info['chat_id']}_{active_info['message_id']}" == game_id:
+                user_active_game_msg.pop(user_id, None)
+
         user_balances[user_id] = get_user_balance(user_id) + current_win
         text = (
             f"<b>🎉 Поздравляем! Вы прошли всю башню!\n\n"
@@ -2433,6 +2618,11 @@ async def cashout_tower_handler(call: CallbackQuery) -> None:
     win_amount = game["current_win"]
     game["game_over"] = True
     user_id = game["owner_id"]
+
+    if user_id in user_active_game_msg:
+        active_info = user_active_game_msg[user_id]
+        if f"{active_info['chat_id']}_{active_info['message_id']}" == game_id:
+            user_active_game_msg.pop(user_id, None)
 
     user_balances[user_id] = get_user_balance(user_id) + win_amount
 
