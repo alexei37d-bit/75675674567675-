@@ -522,7 +522,7 @@ def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
         pin_btn_text = "Открепить"
         pin_cbd = f"chek_unpin_user:{chek_id}"
     else:
-        pin_btn_text = "Закрепить за пользователем"
+        pin_btn_text = "Закрепить"
         pin_cbd = f"chek_pin_user:{chek_id}"
 
     return InlineKeyboardMarkup(
@@ -2456,3 +2456,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+```[cite: 2]
