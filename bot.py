@@ -234,14 +234,6 @@ def get_chek_amount_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
-    chek = created_cheks.get(chek_id, {})
-    if chek.get("target_user"):
-        pin_btn_text = "Открепить"
-        pin_cbd = f"chek_unpin_user:{chek_id}"
-    else:
-        pin_btn_text = "Закрепить за пользователем"
-        pin_cbd = f"chek_pin_user:{chek_id}"
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -254,13 +246,6 @@ def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
                     icon_custom_emoji_id="5377535110289576661",
                     callback_data=f"chek_copy_link:{chek_id}",
                 ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=pin_btn_text,
-                    icon_custom_emoji_id="5197269100878907942",
-                    callback_data=pin_cbd,
-                )
             ],
             [
                 InlineKeyboardButton(
@@ -301,6 +286,13 @@ def get_chek_limits_keyboard(chek_id: str) -> InlineKeyboardMarkup:
         else "Только для TG Premium"
     )
 
+    if chek.get("target_user"):
+        pin_btn_text = "Открепить"
+        pin_cbd = f"chek_unpin_user:{chek_id}"
+    else:
+        pin_btn_text = "Закрепить за пользователем"
+        pin_cbd = f"chek_pin_user:{chek_id}"
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -315,6 +307,13 @@ def get_chek_limits_keyboard(chek_id: str) -> InlineKeyboardMarkup:
                     text=prem_text,
                     icon_custom_emoji_id="5303170015007119865",
                     callback_data=f"chek_toggle_premium:{chek_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=pin_btn_text,
+                    icon_custom_emoji_id="5197269100878907942",
+                    callback_data=pin_cbd,
                 )
             ],
             [
@@ -395,13 +394,33 @@ def get_mines_count_keyboard(owner_id: int) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
+                    text="1", callback_data=f"set_mines_cnt_1:{owner_id}"
+                ),
+                InlineKeyboardButton(
                     text="2", callback_data=f"set_mines_cnt_2:{owner_id}"
                 ),
                 InlineKeyboardButton(
                     text="3", callback_data=f"set_mines_cnt_3:{owner_id}"
                 ),
                 InlineKeyboardButton(
+                    text="4", callback_data=f"set_mines_cnt_4:{owner_id}"
+                ),
+                InlineKeyboardButton(
                     text="5", callback_data=f"set_mines_cnt_5:{owner_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="6", callback_data=f"set_mines_cnt_6:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="7", callback_data=f"set_mines_cnt_7:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="8", callback_data=f"set_mines_cnt_8:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="9", callback_data=f"set_mines_cnt_9:{owner_id}"
                 ),
                 InlineKeyboardButton(
                     text="10", callback_data=f"set_mines_cnt_10:{owner_id}"
@@ -409,10 +428,47 @@ def get_mines_count_keyboard(owner_id: int) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="11", callback_data=f"set_mines_cnt_11:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="12", callback_data=f"set_mines_cnt_12:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="13", callback_data=f"set_mines_cnt_13:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="14", callback_data=f"set_mines_cnt_14:{owner_id}"
+                ),
+                InlineKeyboardButton(
                     text="15", callback_data=f"set_mines_cnt_15:{owner_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="16", callback_data=f"set_mines_cnt_16:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="17", callback_data=f"set_mines_cnt_17:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="18", callback_data=f"set_mines_cnt_18:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="19", callback_data=f"set_mines_cnt_19:{owner_id}"
                 ),
                 InlineKeyboardButton(
                     text="20", callback_data=f"set_mines_cnt_20:{owner_id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="21", callback_data=f"set_mines_cnt_21:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="22", callback_data=f"set_mines_cnt_22:{owner_id}"
+                ),
+                InlineKeyboardButton(
+                    text="23", callback_data=f"set_mines_cnt_23:{owner_id}"
                 ),
                 InlineKeyboardButton(
                     text="24", callback_data=f"set_mines_cnt_24:{owner_id}"
@@ -967,7 +1023,7 @@ async def chek_pin_user_start(call: CallbackQuery, state: FSMContext) -> None:
             [
                 InlineKeyboardButton(
                     text="◀ Назад",
-                    callback_data=f"chek_manage:{chek_id}",
+                    callback_data=f"chek_limits_menu:{chek_id}",
                 )
             ]
         ]
@@ -993,7 +1049,7 @@ async def chek_pin_user_process(message: Message, state: FSMContext) -> None:
         await message.answer(
             text,
             parse_mode="HTML",
-            reply_markup=get_chek_manage_keyboard(chek_id),
+            reply_markup=get_chek_limits_keyboard(chek_id),
         )
 
 
@@ -1005,7 +1061,7 @@ async def chek_unpin_user_handler(call: CallbackQuery) -> None:
     if chek:
         chek["target_user"] = None
         await call.answer("Чек откреплен!", show_alert=True)
-        await chek_manage_handler(call)
+        await chek_limits_menu_handler(call)
 
 
 @dp.callback_query(F.data.startswith("chek_limits_menu:"))
@@ -1019,11 +1075,13 @@ async def chek_limits_menu_handler(call: CallbackQuery) -> None:
 
     has_pass = chek["password"] if chek["password"] else "Не установлен"
     only_prem = "Да" if chek["only_premium"] else "Нет"
+    target_info = chek["target_user"] if chek["target_user"] else "Для всех"
 
     text = (
         f'<b><tg-emoji emoji-id="5451807640436903198">🎰</tg-emoji> Настройка ограничений чека <code>{chek_id}</code>:\n\n'
         f"• Пароль: {has_pass}\n"
-        f"• Только Telegram Premium: {only_prem}</b>"
+        f"• Только Telegram Premium: {only_prem}\n"
+        f"• Закреплен за: {target_info}</b>"
     )
     await safe_edit_message(call, text, get_chek_limits_keyboard(chek_id))
 
@@ -1620,7 +1678,7 @@ async def screen_choose_mines(call: CallbackQuery, state: FSMContext) -> None:
 
     await state.set_state(MinesState.waiting_for_custom_mines)
     text = (
-        "<b>💣 Выберите количество мин на поле (от 2 до 24):\n"
+        "<b>💣 Выберите количество мин на поле (от 1 до 24):\n"
         "Или напишите количество мин числом в чат</b>"
     )
     await safe_edit_message(call, text, get_mines_count_keyboard(owner_id))
@@ -1648,7 +1706,7 @@ async def process_custom_mines(message: Message, state: FSMContext) -> None:
     user_id = message.from_user.id if message.from_user else 0
     try:
         cnt = int(message.text.strip())
-        if not (2 <= cnt <= 24):
+        if not (1 <= cnt <= 24):
             raise ValueError
 
         st = get_game_settings(user_id)
@@ -1668,7 +1726,7 @@ async def process_custom_mines(message: Message, state: FSMContext) -> None:
         )
     except ValueError:
         await message.answer(
-            "<b>❌ Пожалуйста, введите целое число от 2 до 24:</b>"
+            "<b>❌ Пожалуйста, введите целое число от 1 до 24:</b>"
         )
 
 
