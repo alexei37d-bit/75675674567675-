@@ -1,6 +1,7 @@
 import asyncio
 import random
 import string
+import aiohttp
 from aiogram import Bot, Dispatcher, F, html
 from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
@@ -20,6 +21,7 @@ from aiogram.types import (
 )
 
 TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
+CRYPTO_BOT_TOKEN = "548204:AAZOXSPMBWOj3XO29UyRcrxpgxlzujtetPO"
 
 dp = Dispatcher()
 
@@ -34,6 +36,10 @@ class AdminState(StatesGroup):
     waiting_for_sub_balance_user = State()
     waiting_for_sub_balance_amount = State()
     waiting_for_broadcast_text = State()
+
+
+class DepositState(StatesGroup):
+    waiting_for_amount = State()
 
 
 def get_admin_keyboard() -> InlineKeyboardMarkup:
@@ -520,7 +526,6 @@ def get_chek_amount_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
-    chek = created_cheks.get(chek_id, {})
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -1012,6 +1017,106 @@ async def locked_cell_handler(call: CallbackQuery) -> None:
     await call.answer()
 
 
+# --- РАЗДЕЛ ПОПОЛНЕНИЯ БАЛАНСА (CRYPTO BOT) ---
+
+async def create_crypto_invoice(amount: float) -> dict:
+    url = "https://pay.crypt.bot/api/createInvoice"
+    headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
+    payload = {
+        "asset": "USDT",
+        "amount": str(amount),
+        "description": "Пополнение баланса бота",
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as resp:
+            data = await resp.json()
+            if data.get("ok"):
+                return data["result"]
+            return None
+
+
+async def check_crypto_invoice(invoice_id: int) -> bool:
+    url = f"https://pay.crypt.bot/api/getInvoices?invoice_ids={invoice_id}"
+    headers = {"Crypto-Pay-API-Token": CRYPTO_BOT_TOKEN}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as resp:
+            data = await resp.json()
+            if data.get("ok") and data["result"]["items"]:
+                status = data["result"]["items"][0]["status"]
+                return status == "paid"
+            return False
+
+
+@dp.callback_query(F.data == "deposit")
+async def deposit_start_handler(call: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(DepositState.waiting_for_amount)
+    await safe_edit_message(
+        call,
+        "<b>💳 Введите сумму пополнения в $ (например: 1 или 5.5):</b>",
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="◀ Назад", callback_data="open_wallet_inline")]
+            ]
+        ),
+    )
+
+
+@dp.message(DepositState.waiting_for_amount)
+async def process_deposit_amount(message: Message, state: FSMContext) -> None:
+    try:
+        raw_text = message.text.replace("$", "").replace(",", ".").strip()
+        amount = float(raw_text)
+        if amount <= 0:
+            raise ValueError
+
+        invoice = await create_crypto_invoice(amount)
+        if not invoice:
+            await message.answer("<b>❌ Ошибка генерации счета. Попробуйте позже.</b>", parse_mode="HTML")
+            await state.clear()
+            return
+
+        pay_url = invoice["pay_url"]
+        invoice_id = invoice["invoice_id"]
+        await state.clear()
+
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="💵 Оплатить", url=pay_url)],
+                [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_pay:{invoice_id}:{amount}")],
+                [InlineKeyboardButton(text="◀ Отмена", callback_data="open_wallet_inline")],
+            ]
+        )
+
+        await message.answer(
+            f"<b>Счет на сумму {amount:.2f}$ успешно создан!\nНажмите кнопку ниже для оплаты:</b>",
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+    except ValueError:
+        await message.answer("<b>❌ Некорректная сумма. Введите положительное число:</b>", parse_mode="HTML")
+
+
+@dp.callback_query(F.data.startswith("check_pay:"))
+async def check_pay_handler(call: CallbackQuery) -> None:
+    parts = call.data.split(":")
+    invoice_id = int(parts[1])
+    amount = float(parts[2])
+    user_id = call.from_user.id
+
+    is_paid = await check_crypto_invoice(invoice_id)
+    if is_paid:
+        user_balances[user_id] = get_user_balance(user_id) + amount
+        await call.answer("✅ Оплата прошла успешно! Баланс пополнен.", show_alert=True)
+        await open_wallet_inline_handler(call)
+    else:
+        await call.answer("❌ Счет еще не оплачен!", show_alert=True)
+
+
+@dp.callback_query(F.data == "withdraw")
+async def withdraw_handler(call: CallbackQuery) -> None:
+    await call.answer("Вывод средств временно недоступен.", show_alert=True)
+
+
 # --- РАЗДЕЛ ЧЕКИ ---
 
 
@@ -1049,7 +1154,7 @@ async def chek_create_start_handler(
 
     await state.set_state(ChekState.waiting_for_amount)
     text = (
-        '<b><tg-emoji emoji-id="5449526218233779946">👛</tg-emoji> Отправьте сумму чека (например: 2 или 2$):</b>'
+        '<b><tg-emoji emoji-id="5449526218233779946">👛</tg-emoji> Отправьте сумму 1 активации :</b>'
     )
     await safe_edit_message(call, text, get_chek_amount_keyboard())
 
@@ -1148,6 +1253,71 @@ async def process_chek_amount_input(
         )
 
 
+@dp.message(ChekState.waiting_for_activations)
+async def process_chek_activations_input(
+    message: Message, state: FSMContext
+) -> None:
+    if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
+        await message.answer(
+            "<b>Перейдите в личные сообщения с ботом <tg-emoji emoji-id=\"5312140414982071786\">❌</tg-emoji></b>",
+            parse_mode="HTML"
+        )
+        return
+
+    user_id = message.from_user.id
+    balance = get_user_balance(user_id)
+    data = await state.get_data()
+    amount = data.get("chek_amount", 0.1)
+
+    try:
+        activations = int(message.text.strip())
+        total_cost = amount * activations
+
+        if activations <= 0 or total_cost > balance:
+            raise ValueError
+
+        user_balances[user_id] -= total_cost
+
+        chek_id = generate_check_code()
+        created_cheks[chek_id] = {
+            "id": chek_id,
+            "owner_id": user_id,
+            "amount": amount,
+            "activations": activations,
+            "rem_activations": activations,
+            "password": None,
+            "only_premium": False,
+            "activated_users": set(),
+            "target_user": None,
+        }
+
+        await state.clear()
+
+        bot_info = await message.bot.get_me()
+        check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
+
+        if activations == 1:
+            title_str = f"Чек на {amount:.2f}$"
+        else:
+            title_str = f"Чек на {amount:.2f}$ на {activations} активаций"
+
+        text = (
+            f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> {title_str} успешно создан!\n\n'
+            f"Ссылка на чек: <code>{check_link}</code></b>"
+        )
+
+        await message.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=get_chek_manage_keyboard(chek_id),
+        )
+    except ValueError:
+        await message.answer(
+            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Некорректное количество активаций или недостаточно средств!</b>',
+            parse_mode="HTML"
+        )
+
+
 @dp.callback_query(F.data.startswith("chek_copy_link:"))
 async def chek_copy_link_handler(call: CallbackQuery) -> None:
     chek_id = call.data.split(":")[1]
@@ -1160,7 +1330,6 @@ async def chek_copy_link_handler(call: CallbackQuery) -> None:
 async def chek_manage_handler(call: CallbackQuery, state: FSMContext = None) -> None:
     if state:
         await state.clear()
-
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
@@ -1203,7 +1372,7 @@ async def chek_pin_user_start(call: CallbackQuery, state: FSMContext) -> None:
             [
                 InlineKeyboardButton(
                     text="◀ Назад",
-                    callback_data=f"chek_limits_menu:{chek_id}",
+                    callback_data=f"chek_manage:{chek_id}",
                 )
             ]
         ]
@@ -1229,28 +1398,25 @@ async def chek_pin_user_process(message: Message, state: FSMContext) -> None:
         await message.answer(
             text,
             parse_mode="HTML",
-            reply_markup=get_chek_limits_keyboard(chek_id),
+            reply_markup=get_chek_manage_keyboard(chek_id),
         )
 
 
 @dp.callback_query(F.data.startswith("chek_unpin_user:"))
-async def chek_unpin_user_handler(call: CallbackQuery, state: FSMContext = None) -> None:
-    if state:
-        await state.clear()
+async def chek_unpin_user_handler(call: CallbackQuery) -> None:
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if chek:
         chek["target_user"] = None
         await call.answer("Чек откреплен!", show_alert=True)
-        await chek_limits_menu_handler(call, state)
+        await chek_manage_handler(call)
 
 
 @dp.callback_query(F.data.startswith("chek_limits_menu:"))
 async def chek_limits_menu_handler(call: CallbackQuery, state: FSMContext = None) -> None:
     if state:
         await state.clear()
-
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
@@ -1292,16 +1458,14 @@ async def chek_set_pass_start(call: CallbackQuery, state: FSMContext) -> None:
 
 
 @dp.callback_query(F.data.startswith("chek_remove_pass:"))
-async def chek_remove_pass_handler(call: CallbackQuery, state: FSMContext = None) -> None:
-    if state:
-        await state.clear()
+async def chek_remove_pass_handler(call: CallbackQuery) -> None:
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if chek:
         chek["password"] = None
         await call.answer("🔓 Пароль успешно удален!", show_alert=True)
-        await chek_limits_menu_handler(call, state)
+        await chek_limits_menu_handler(call)
 
 
 @dp.message(ChekState.waiting_for_password)
@@ -1324,13 +1488,13 @@ async def chek_set_pass_process(message: Message, state: FSMContext) -> None:
 
 
 @dp.callback_query(F.data.startswith("chek_toggle_premium:"))
-async def chek_toggle_premium_handler(call: CallbackQuery, state: FSMContext = None) -> None:
+async def chek_toggle_premium_handler(call: CallbackQuery) -> None:
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if chek:
         chek["only_premium"] = not chek["only_premium"]
-        await chek_limits_menu_handler(call, state)
+        await chek_limits_menu_handler(call)
 
 
 @dp.callback_query(F.data.startswith("chek_delete:"))
@@ -1398,6 +1562,77 @@ async def chek_active_list_handler(call: CallbackQuery) -> None:
         "<b>📋 Ваши активные чеки:</b>",
         InlineKeyboardMarkup(inline_keyboard=keyboard),
     )
+
+
+# --- БЫСТРОЕ СОЗДАНИЕ ЧЕКА СООБЩЕНИЕМ ВИДА "@юзер 2$" ИЛИ "2$" ---
+
+
+@dp.message(F.text)
+async def quick_chek_creation_or_text_handler(message: Message, state: FSMContext) -> None:
+    current_state = await state.get_state()
+    if current_state is not None:
+        return
+
+    text_content = message.text.strip()
+    parts = text_content.split()
+
+    target_user = None
+    amount = None
+
+    if len(parts) == 1:
+        raw_val = parts[0].replace("$", "").replace(",", ".").strip()
+        try:
+            amount = float(raw_val)
+        except ValueError:
+            return
+    elif len(parts) == 2:
+        if parts[0].startswith("@"):
+            target_user = parts[0]
+            raw_val = parts[1].replace("$", "").replace(",", ".").strip()
+        elif parts[1].startswith("@"):
+            target_user = parts[1]
+            raw_val = parts[0].replace("$", "").replace(",", ".").strip()
+        else:
+            return
+
+        try:
+            amount = float(raw_val)
+        except ValueError:
+            return
+    else:
+        return
+
+    user_id = message.from_user.id
+    balance = get_user_balance(user_id)
+
+    if amount <= 0 or amount > balance:
+        await message.answer("<b>❌ Недостаточно средств на балансе!</b>", parse_mode="HTML")
+        return
+
+    user_balances[user_id] -= amount
+    chek_id = generate_check_code()
+
+    created_cheks[chek_id] = {
+        "id": chek_id,
+        "owner_id": user_id,
+        "amount": amount,
+        "activations": 1,
+        "rem_activations": 1,
+        "password": None,
+        "only_premium": False,
+        "activated_users": set(),
+        "target_user": target_user,
+    }
+
+    bot_info = await message.bot.get_me()
+    check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
+    title_str = f"Чек на {amount:.2f}$"
+
+    out_text = (
+        f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> {title_str} успешно создан!\n\n'
+        f"Ссылка на чек: <code>{check_link}</code></b>"
+    )
+    await message.answer(out_text, parse_mode="HTML", reply_markup=get_chek_manage_keyboard(chek_id))
 
 
 # --- ЛОГИКА ИНЛАЙН И АКТИВАЦИИ ЧЕКОВ ---
