@@ -1051,7 +1051,7 @@ async def locked_cell_handler(call: CallbackQuery) -> None:
 @dp.callback_query(F.data == "deposit")
 async def deposit_start_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(DepositState.waiting_for_amount)
-    text = "<b>💳 Введите сумму для пополнения баланса в USDT (например: 5 или 10.5):</b>"
+    text = "<b><tg-emoji emoji-id=\"5449789954995559460\">💎</tg-emoji> Введите сумму для пополнения баланса в USDT (например: 0,10$):</b>"
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="◀ Назад", callback_data="open_wallet_inline")]
@@ -1083,12 +1083,12 @@ async def deposit_amount_process(message: Message, state: FSMContext) -> None:
         inline_keyboard=[
             [InlineKeyboardButton(text="💵 Оплатить", url=pay_url)],
             [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_pay:{invoice_id}:{amount}")],
-            [InlineKeyboardButton(text="◀ Отмена", callback_data="open_wallet_inline")]
+            [InlineKeyboardButton(text="◀ Назад", callback_data="open_wallet_inline")]
         ]
     )
 
     await message.answer(
-        f"<b>💎 Счет на пополнение {amount:.2f} USDT создан!</b>\n\nОплатите его по кнопке ниже и нажмите «Проверить оплату»:",
+        f"<b><tg-emoji emoji-id=\"5452168761287152584\">🎁</tg-emoji> Счет на пополнение {amount:.2f} USDT создан!</b>\n\nОплатите его по кнопке ниже и нажмите «Проверить оплату»:",
         parse_mode="HTML",
         reply_markup=kb
     )
