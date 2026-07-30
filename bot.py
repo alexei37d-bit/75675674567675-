@@ -1430,7 +1430,7 @@ async def chek_set_pass_start(call: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(target_chek_id=chek_id)
     await state.set_state(ChekState.waiting_for_password)
 
-    text = "<b>🔑 Введите пароль для чека в чат:</b>"
+    text = "<b><tg-emoji emoji-id=\"5188276641951948688\">🃏</tg-emoji> Введите пароль для чека в чат:</b>"
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -1450,7 +1450,7 @@ async def chek_remove_pass_handler(call: CallbackQuery, state: FSMContext) -> No
 
     if chek:
         chek["password"] = None
-        await call.answer("🔓 Пароль успешно удален!", show_alert=True)
+        await call.answer("Пароль успешно удален!", show_alert=True)
         await chek_limits_menu_handler(call, state)
 
 @dp.message(ChekState.waiting_for_password)
@@ -1464,7 +1464,7 @@ async def chek_set_pass_process(message: Message, state: FSMContext) -> None:
         chek["password"] = pwd
         await state.clear()
 
-        text = f"<b>✅ Пароль «{pwd}» успешно установлен на чек!</b>"
+        text = f"<b><tg-emoji emoji-id=\"5463249656651747420\">🎁</tg-emoji> Пароль «{pwd}» успешно установлен на чек!</b>"
         await message.answer(
             text,
             parse_mode="HTML",
@@ -1516,7 +1516,7 @@ async def chek_active_list_handler(call: CallbackQuery) -> None:
             ]
         )
         await safe_edit_message(
-            call, "<b>🎟 У вас нет активных чеков!</b>", kb
+            call, "<b><tg-emoji emoji-id=\"5469638931605657197\">🏦</tg-emoji> У вас нет активных чеков!</b>", kb
         )
         return
 
@@ -1541,7 +1541,7 @@ async def chek_active_list_handler(call: CallbackQuery) -> None:
 
     await safe_edit_message(
         call,
-        "<b>📋 Ваши активные чеки:</b>",
+        "<b><tg-emoji emoji-id=\"5469638931605657197\">🏦</tg-emoji> Ваши активные чеки:</b>",
         InlineKeyboardMarkup(inline_keyboard=keyboard),
     )
 
@@ -1744,7 +1744,7 @@ async def process_check_pass_input(
 
     pwd_input = message.text.strip()
     if pwd_input != chek["password"]:
-        await message.answer("❌ Неверный пароль! Попробуйте снова:")
+        await message.answer("<b>❌ Неверный пароль! Попробуйте снова:</b>")
         return
 
     await complete_chek_activation(message, user, chek, state)
@@ -2771,7 +2771,7 @@ async def basketball_bet_handler(call: CallbackQuery) -> None:
         )
     else:
         text = (
-            f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол | Проигрыш</b>\n\n'
+            f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол | Вы проиграли </b>\n\n'
             f'<tg-emoji emoji-id=\"5309815458990433715\">🎮</tg-emoji> <b>Прогноз:</b> {bet_type_name} (x{res["multiplier"]})\n'
         )
 
