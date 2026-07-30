@@ -802,10 +802,10 @@ def build_profile_text(user_id: int, full_name: str) -> str:
     balance = get_user_balance(user_id)
     turnover = get_user_turnover(user_id)
     return (
-        f'👤 {html.quote(full_name)}\n'
-        f'💳 Ваш ID : {user_id}\n'
-        f'💰 Баланс: {balance:.2f} 💲\n'
-        f'📊 Оборот : {turnover:.2f} 💲'
+        f'<tg-emoji emoji-id=\"5197514090108456970\">👤</tg-emoji> Имя: {html.quote(full_name)}\n'
+        f'<tg-emoji emoji-id=\"5449624985301717991\">💳</tg-emoji> Ваш ID : {user_id}\n'
+        f'<tg-emoji emoji-id=\"5451845260055450038\">💰</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id=\"5197422813463483902\">💵</tg-emoji>\n'
+        f'<tg-emoji emoji-id=\"5452042536493288421\">📊</tg-emoji> Оборот : {turnover:.2f} <tg-emoji emoji-id=\"5197422813463483902\">💵</tg-emoji>'
     )
 
 TOWER_FLOORS = 8
