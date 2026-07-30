@@ -2736,9 +2736,7 @@ async def start_basketball_game(call: CallbackQuery) -> None:
 
     user_balances[user_id] -= bet
     user_turnover[user_id] = get_user_turnover(user_id) + bet
-    user_bets_counter[user_id] = user_bets_counter.get(user_id, 0) + 1
-
-    should_rig = (user_id not in ADMIN_IDS) and (
+    user_bets_counter[user_id] = user_bets_counter.get(user_id, 0) + 1    should_rig = (user_id not in ADMIN_IDS) and (
         user_bets_counter[user_id] % random.choice([2, 3]) == 0
     )
 
@@ -2806,3 +2804,10 @@ async def basketball_repeat_handler(call: CallbackQuery) -> None:
         f'• Застрял - x{basketball_coeffs["застрял"]}'
     )
     await safe_edit_message(call, text, get_basketball_type_keyboard(bet, owner_id))
+
+async def main() -> None:
+    bot = Bot(token=TOKEN)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
