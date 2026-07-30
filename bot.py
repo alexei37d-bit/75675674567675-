@@ -2241,7 +2241,7 @@ elif game_type == "tower":
         f"Текущий выигрыш: {game['current_win']:.2f} <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
     )
     await safe_edit_message(call, text, build_tower_game_keyboard(game))
---- ОБРАБОТЧИКИ ИГРЫ «БАШНЯ» ---
+# --- ОБРАБОТЧИКИ ИГРЫ «БАШНЯ» ---
 @dp.callback_query(F.data.startswith("tower_choose_bet"))
 async def tower_choose_bet_handler(
 call: CallbackQuery, state: FSMContext
