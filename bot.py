@@ -802,10 +802,10 @@ def build_profile_text(user_id: int, full_name: str) -> str:
     balance = get_user_balance(user_id)
     turnover = get_user_turnover(user_id)
     return (
-        f'<tg-emoji emoji-id=\"5197514090108456970\">👤</tg-emoji> Имя: {html.quote(full_name)}\n'
-        f'<tg-emoji emoji-id=\"5449624985301717991\">💳</tg-emoji> Ваш ID : {user_id}\n'
-        f'<tg-emoji emoji-id=\"5451845260055450038\">💰</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id=\"5197422813463483902\">💵</tg-emoji>\n'
-        f'<tg-emoji emoji-id=\"5452042536493288421\">📊</tg-emoji> Оборот : {turnover:.2f} <tg-emoji emoji-id=\"5197422813463483902\">💵</tg-emoji>'
+        f<b>'<tg-emoji emoji-id=\"5197514090108456970\">👤</tg-emoji> Имя: {html.quote(full_name)}\n</b>'
+        f'<b><tg-emoji emoji-id=\"5449624985301717991\">💳</tg-emoji> Ваш ID : {user_id}\n</b>'
+        f'<b><tg-emoji emoji-id=\"5451845260055450038\">💰</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id=\"5197422813463483902\">💵</tg-emoji>\n</b>'
+        f'<b><tg-emoji emoji-id=\"5452042536493288421\">📊</tg-emoji> Оборот : {turnover:.2f} <tg-emoji emoji-id=\"5197422813463483902\">💵</tg-emoji></b>'
     )
 
 TOWER_FLOORS = 8
@@ -1027,19 +1027,19 @@ def get_basketball_type_keyboard(bet: float, owner_id: int) -> InlineKeyboardMar
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"🏀 Гол (x{basketball_coeffs['гол']})",
+                    text=f"Гол (x{basketball_coeffs['гол']})",
                     callback_data=f"basketball_bet_гол_{bet}:{owner_id}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text=f"❌ Мимо (x{basketball_coeffs['мимо']})",
+                    text=f"Мимо (x{basketball_coeffs['мимо']})",
                     callback_data=f"basketball_bet_мимо_{bet}:{owner_id}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text=f"⚠️ Застрял (x{basketball_coeffs['застрял']})",
+                    text=f"Застрял (x{basketball_coeffs['застрял']})",
                     callback_data=f"basketball_bet_застрял_{bet}:{owner_id}",
                 )
             ],
@@ -1186,9 +1186,9 @@ async def withdraw_handler(call: CallbackQuery) -> None:
 async def open_cheks_menu_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     text = (
-        '🎟 '
-        'Создайте чек для мгновенной отправки средств пользователю или группе пользователей - '
-        'просто укажите количество активаций!'
+        '<b><tg-emoji emoji-id=\"5307773751796996779\">🎟</tg-emoji></b>'
+        '<b>Создайте чек для мгновенной отправки средств пользователю или группе пользователей - </b>'
+        '<b>просто укажите количество активаций!</b>'
     )
     await safe_edit_message(call, text, get_cheks_main_keyboard())
 
@@ -1199,7 +1199,7 @@ async def chek_create_start_handler(
     if call.message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
         await call.answer()
         await call.message.answer(
-            'Перейдите в личные сообщения с ботом <tg-emoji emoji-id="5312140414982071786">❌</tg-emoji>',
+            '<b>Перейдите в личные сообщения с ботом <tg-emoji emoji-id="5312140414982071786">❌</tg-emoji></b>',
             parse_mode="HTML"
         )
         return
@@ -1209,7 +1209,7 @@ async def chek_create_start_handler(
 
     if balance <= 0:
         await call.answer(
-            "❌ У вас недостаточный баланс для создания чека!", show_alert=True
+            "<b>❌ У вас недостаточный баланс для создания чека!</b>", show_alert=True
         )
         return
 
