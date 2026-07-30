@@ -1588,16 +1588,16 @@ async def activate_chek_btn_handler(
     user_id = user.id
 
     if "activated_users" in chek and user_id in chek["activated_users"]:
-        await call.answer("Этот чек уже активирован !", show_alert=True)
+        await call.answer("Этот чек уже активирован!", show_alert=True)
         return
 
     if chek["rem_activations"] <= 0:
-        await call.answer("Этот чек уже активирован !", show_alert=True)
+        await call.answer("Этот чек уже активирован!", show_alert=True)
         return
 
     if chek.get("only_premium") and not getattr(user, "is_premium", False):
         await call.answer(
-            "Этот чек доступен только для премиум-пользователей !",
+            "Этот чек доступен только для премиум-пользователей!",
             show_alert=True,
         )
         return
@@ -1632,21 +1632,21 @@ async def process_check_pass_input(
 
     if "activated_users" in chek and user_id in chek["activated_users"]:
         await message.answer(
-            "<b>Этот чек уже активирован !</b>", parse_mode="HTML"
+            "<b>Этот чек уже активирован!</b>", parse_mode="HTML"
         )
         await state.clear()
         return
 
     if chek["rem_activations"] <= 0:
         await message.answer(
-            "<b>Этот чек уже активирован !</b>", parse_mode="HTML"
+            "<b>Этот чек уже активирован!</b>", parse_mode="HTML"
         )
         await state.clear()
         return
 
     if chek.get("only_premium") and not getattr(user, "is_premium", False):
         await message.answer(
-            "<b>Этот чек доступен только для премиум-пользователей !</b>",
+            "<b>Этот чек доступен только для премиум-пользователей!</b>",
             parse_mode="HTML",
         )
         await state.clear()
@@ -1704,19 +1704,19 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
 
         if "activated_users" in chek and user_id in chek["activated_users"]:
             await message.answer(
-                "<b>Этот чек уже активирован !</b>", parse_mode="HTML"
+                "<b>Этот чек уже активирован!</b>", parse_mode="HTML"
             )
             return
 
         if chek["rem_activations"] <= 0:
             await message.answer(
-                "<b>Этот чек уже активирован !</b>", parse_mode="HTML"
+                "<b>Этот чек уже активирован!</b>", parse_mode="HTML"
             )
             return
 
         if chek.get("only_premium") and not getattr(user, "is_premium", False):
             await message.answer(
-                "<b>Этот чек доступен только для премиум-пользователей !</b>",
+                "<b>Этот чек доступен только для премиум-пользователей!</b>",
                 parse_mode="HTML",
             )
             return
@@ -1725,7 +1725,7 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
             await state.update_data(target_chek_id=chek_id)
             await state.set_state(ChekState.waiting_for_check_pass_input)
             await message.answer(
-                "<b>Введите пароль для использования чека:</b>",
+                "<b>Введите пароль для использования чека в чат:</b>",
                 parse_mode="HTML",
             )
             return
@@ -1804,8 +1804,8 @@ async def play_handler(message: Message) -> None:
     balance = get_user_balance(user_id)
 
     text = (
-        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n'
-        f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки!\n\n'
+        f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
     await message.answer(
         text=text, parse_mode="HTML", reply_markup=games_keyboard
@@ -1827,8 +1827,8 @@ async def back_to_games_handler(
     balance = get_user_balance(user_id)
 
     text = (
-        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки !\n\n'
-        f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс : </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
+        '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки!\n\n'
+        f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
     await safe_edit_message(call, text, games_keyboard)
 
@@ -1866,7 +1866,7 @@ async def process_custom_bet(message: Message, state: FSMContext) -> None:
         balance = get_user_balance(user_id)
         text = (
             f'<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Мины</b>\n'
-            f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
+            f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
             f'<b>Выбрано - {st["mines"]} 💣</b>'
         )
         await message.answer(
@@ -1898,7 +1898,7 @@ async def screen_game_confirm(
 
     text = (
         f'<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Мины</b>\n'
-        f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
+        f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
         f'<b>Выбрано - {st["mines"]} 💣</b>'
     )
     await safe_edit_message(
@@ -1927,7 +1927,7 @@ async def set_mines_count(call: CallbackQuery, state: FSMContext) -> None:
     data_parts = call.data.split(":")
     owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
     if not check_owner(call, owner_id):
-        await call.answer("This is not your game!", show_alert=True)
+        await call.answer("Это не ваша игра!", show_alert=True)
         return
 
     await state.clear()
@@ -1954,7 +1954,7 @@ async def process_custom_mines(message: Message, state: FSMContext) -> None:
         balance = get_user_balance(user_id)
         text = (
             f'<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Мины</b>\n'
-            f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
+            f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
             f'<b>Выбрано - {st["mines"]} 💣</b>'
         )
         await message.answer(
@@ -2238,7 +2238,7 @@ async def process_custom_tower_bet(
         balance = get_user_balance(user_id)
         text = (
             f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня</b>\n'
-            f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
+            f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
             f'<b>Выбрано - {st["traps"]} 💣</b>'
         )
         await message.answer(
@@ -2270,7 +2270,7 @@ async def screen_tower_game_confirm(
 
     text = (
         f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня</b>\n'
-        f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
+        f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
         f'<b>Выбрано - {st["traps"]} 💣</b>'
     )
     await safe_edit_message(
@@ -2332,7 +2332,7 @@ async def process_custom_tower_traps(
         balance = get_user_balance(user_id)
         text = (
             f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня</b>\n'
-            f'<b>Баланс : {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
+            f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
             f'<b>Выбрано - {st["traps"]} 💣</b>'
         )
         await message.answer(
@@ -2632,7 +2632,7 @@ async def cashout_tower_handler(call: CallbackQuery) -> None:
     del active_tower_games[game_id]
 
 
-@dp.message(F.text & (F.chat.type == ChatType.SUPERGROUP) | (F.chat.type == ChatType.GROUP))
+@dp.message(F.text & ((F.chat.type == ChatType.SUPERGROUP) | (F.chat.type == ChatType.GROUP)))
 async def chat_check_creation_handler(message: Message) -> None:
     if not message.text:
         return
@@ -2651,7 +2651,7 @@ async def chat_check_creation_handler(message: Message) -> None:
     amount_str = parts[1].replace("$", "").replace(",", ".")
     try:
         amount = float(amount_str)
-        if amount < 0.01:
+        if amount < 0.1:
             return
     except ValueError:
         return
@@ -2690,14 +2690,12 @@ async def chat_check_creation_handler(message: Message) -> None:
         formatted_amount = str(int(amount))
 
     text = f"<b>💸 Чек на {formatted_amount}${target_info}</b>"
-    
-    # Кнопка получения чека теперь использует callback_data вместо url (работает без пароля и в группе)
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="Получить",
-                    callback_data=f"activate_chek_btn:{chek_id}",
+                    url=check_link,
                 )
             ]
         ]
@@ -2713,3 +2711,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+```[cite: 1]
