@@ -1079,25 +1079,35 @@ async def process_chek_quick_amount(
         await call.answer("❌ Недостаточно средств на балансе!", show_alert=True)
         return
 
-    await state.update_data(chek_amount=amount)
-    await state.set_state(ChekState.waiting_for_activations)
+    # Автоматическое создание чека на 1 активацию без пароля при выборе суммы
+    if balance < amount:
+        await call.answer("❌ Недостаточно средств на балансе!", show_alert=True)
+        return
 
-    max_acts = int(balance // amount)
+    user_balances[user_id] -= amount
+    chek_id = generate_check_code()
+    created_cheks[chek_id] = {
+        "id": chek_id,
+        "owner_id": user_id,
+        "amount": amount,
+        "activations": 1,
+        "rem_activations": 1,
+        "password": None,
+        "only_premium": False,
+        "activated_users": set(),
+        "target_user": None,
+    }
+    await state.clear()
+
+    bot_info = await call.bot.get_me()
+    check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
+    title_str = f"Чек на {amount:.2f}$"
+
     text = (
-        f'<b><tg-emoji emoji-id="5307773751796996779">🎟</tg-emoji> Введите количество активаций чека:\n\n'
-        f"Сумма 1 активации: {amount:.2f} $\n"
-        f"Максимально доступно активаций: {max_acts}</b>"
+        f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> {title_str} успешно создан!\n\n'
+        f"Ссылка на чек: <code>{check_link}</code></b>"
     )
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="◀ Назад", callback_data="chek_create_start"
-                )
-            ]
-        ]
-    )
-    await safe_edit_message(call, text, kb)
+    await safe_edit_message(call, text, get_chek_manage_keyboard(chek_id))
 
 
 @dp.message(ChekState.waiting_for_amount)
@@ -1120,28 +1130,35 @@ async def process_chek_amount_input(
         if amount <= 0 or amount > balance:
             raise ValueError
 
-        await state.update_data(chek_amount=amount)
-        await state.set_state(ChekState.waiting_for_activations)
+        # Автоматическое создание чека на 1 активацию без пароля после ввода суммы
+        user_balances[user_id] -= amount
+        chek_id = generate_check_code()
+        created_cheks[chek_id] = {
+            "id": chek_id,
+            "owner_id": user_id,
+            "amount": amount,
+            "activations": 1,
+            "rem_activations": 1,
+            "password": None,
+            "only_premium": False,
+            "activated_users": set(),
+            "target_user": None,
+        }
+        await state.clear()
 
-        max_acts = int(balance // amount)
+        bot_info = await message.bot.get_me()
+        check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
+        title_str = f"Чек на {amount:.2f}$"
+
         text = (
-            f'<b><tg-emoji emoji-id="5307773751796996779">🎟</tg-emoji> Введите количество активаций чека:\n\n'
-            f"Сумма 1 активации: {amount:.2f} $\n"
-            f"Максимально доступно активаций: {max_acts}</b>"
+            f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> {title_str} успешно создан!\n\n'
+            f"Ссылка на чек: <code>{check_link}</code></b>"
         )
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="◀ Назад", callback_data="chek_create_start"
-                    )
-                ]
-            ]
-        )
-        await message.answer(text, parse_mode="HTML", reply_markup=kb)
+        await message.answer(text, parse_mode="HTML", reply_markup=get_chek_manage_keyboard(chek_id))
     except ValueError:
         await message.answer(
-            f" <tg-emoji emoji-id=\"5312140414982071786\">❌</tg-emoji> Некорректная сумма! Введите число от 0.01 до {balance:.2f}:"
+            f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Некорректная сумма! Введите число от 0.01 до {balance:.2f}:</b>',
+            parse_mode="HTML"
         )
 
 
@@ -1205,7 +1222,8 @@ async def process_chek_activations_input(
         )
     except ValueError:
         await message.answer(
-            "<tg-emoji emoji-id=\"5312140414982071786\">❌</tg-emoji> Некорректное количество активаций или недостаточно средств!"
+            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Некорректное количество активаций или недостаточно средств!</b>',
+            parse_mode="HTML"
         )
 
 
@@ -2632,83 +2650,9 @@ async def cashout_tower_handler(call: CallbackQuery) -> None:
     del active_tower_games[game_id]
 
 
-@dp.message(F.text & ((F.chat.type == ChatType.SUPERGROUP) | (F.chat.type == ChatType.GROUP)))
-async def chat_check_creation_handler(message: Message) -> None:
-    if not message.text:
-        return
-    
-    parts = message.text.strip().split()
-    if len(parts) < 2:
-        return
-    
-    bot_info = await message.bot.get_me()
-    bot_username = f"@{bot_info.username}".lower()
-    
-    possible_bot_mention = parts[0].lower()
-    if not (possible_bot_mention == bot_username or possible_bot_mention.startswith("@")):
-        return
-        
-    amount_str = parts[1].replace("$", "").replace(",", ".")
-    try:
-        amount = float(amount_str)
-        if amount < 0.1:
-            return
-    except ValueError:
-        return
-
-    user_id = message.from_user.id if message.from_user else 0
-    balance = get_user_balance(user_id)
-    if balance < amount:
-        return
-
-    target_user = None
-    if len(parts) >= 3:
-        potential_target = parts[2].strip()
-        if potential_target.startswith("@") or potential_target.isdigit():
-            target_user = potential_target
-
-    user_balances[user_id] -= amount
-
-    chek_id = generate_check_code()
-    created_cheks[chek_id] = {
-        "id": chek_id,
-        "owner_id": user_id,
-        "amount": amount,
-        "activations": 1,
-        "rem_activations": 1,
-        "password": None,
-        "only_premium": False,
-        "activated_users": set(),
-        "target_user": target_user,
-    }
-
-    check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
-    target_info = f" для {target_user}" if target_user else ""
-
-    formatted_amount = f"{amount:.2f}".rstrip("0").rstrip(".")
-    if amount.is_integer():
-        formatted_amount = str(int(amount))
-
-    text = f"<b>💸 Чек на {formatted_amount}${target_info}</b>"
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Получить",
-                    url=check_link,
-                )
-            ]
-        ]
-    )
-    await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
-
-
 async def main() -> None:
-    bot = Bot(token=TOKEN)
-    print("Бот запущен!")
-    await dp.start_polling(bot)
+    await dp.start_polling(Bot(token=TOKEN))
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-```[cite: 1]
