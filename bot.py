@@ -521,13 +521,6 @@ def get_chek_amount_keyboard() -> InlineKeyboardMarkup:
 
 def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
     chek = created_cheks.get(chek_id, {})
-    if chek.get("target_user"):
-        pin_btn_text = "Открепить"
-        pin_cbd = f"chek_unpin_user:{chek_id}"
-    else:
-        pin_btn_text = "Закрепить"
-        pin_cbd = f"chek_pin_user:{chek_id}"
-
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -541,7 +534,6 @@ def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
                     callback_data=f"chek_copy_link:{chek_id}",
                 ),
             ],
-    
             [
                 InlineKeyboardButton(
                     text="Ограничения",
@@ -1057,7 +1049,7 @@ async def chek_create_start_handler(
 
     await state.set_state(ChekState.waiting_for_amount)
     text = (
-        '<b><tg-emoji emoji-id="5449526218233779946">👛</tg-emoji> Отправьте сумму 1 активации :</b>'
+        '<b><tg-emoji emoji-id="5449526218233779946">👛</tg-emoji> Отправьте сумму чека (например: 2 или 2$):</b>'
     )
     await safe_edit_message(call, text, get_chek_amount_keyboard())
 
@@ -1076,11 +1068,6 @@ async def process_chek_quick_amount(
         amount = balance
 
     if amount > balance or amount <= 0:
-        await call.answer("❌ Недостаточно средств на балансе!", show_alert=True)
-        return
-
-    # Автоматическое создание чека на 1 активацию без пароля при выборе суммы
-    if balance < amount:
         await call.answer("❌ Недостаточно средств на балансе!", show_alert=True)
         return
 
@@ -1130,7 +1117,6 @@ async def process_chek_amount_input(
         if amount <= 0 or amount > balance:
             raise ValueError
 
-        # Автоматическое создание чека на 1 активацию без пароля после ввода суммы
         user_balances[user_id] -= amount
         chek_id = generate_check_code()
         created_cheks[chek_id] = {
@@ -1162,71 +1148,6 @@ async def process_chek_amount_input(
         )
 
 
-@dp.message(ChekState.waiting_for_activations)
-async def process_chek_activations_input(
-    message: Message, state: FSMContext
-) -> None:
-    if message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
-        await message.answer(
-            "<b>Перейдите в личные сообщения с ботом <tg-emoji emoji-id=\"5312140414982071786\">❌</tg-emoji></b>",
-            parse_mode="HTML"
-        )
-        return
-
-    user_id = message.from_user.id
-    balance = get_user_balance(user_id)
-    data = await state.get_data()
-    amount = data.get("chek_amount", 0.1)
-
-    try:
-        activations = int(message.text.strip())
-        total_cost = amount * activations
-
-        if activations <= 0 or total_cost > balance:
-            raise ValueError
-
-        user_balances[user_id] -= total_cost
-
-        chek_id = generate_check_code()
-        created_cheks[chek_id] = {
-            "id": chek_id,
-            "owner_id": user_id,
-            "amount": amount,
-            "activations": activations,
-            "rem_activations": activations,
-            "password": None,
-            "only_premium": False,
-            "activated_users": set(),
-            "target_user": None,
-        }
-
-        await state.clear()
-
-        bot_info = await message.bot.get_me()
-        check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
-
-        if activations == 1:
-            title_str = f"Чек на {amount:.2f}$"
-        else:
-            title_str = f"Чек на {amount:.2f}$ на {activations} активаций"
-
-        text = (
-            f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> {title_str} успешно создан!\n\n'
-            f"Ссылка на чек: <code>{check_link}</code></b>"
-        )
-
-        await message.answer(
-            text,
-            parse_mode="HTML",
-            reply_markup=get_chek_manage_keyboard(chek_id),
-        )
-    except ValueError:
-        await message.answer(
-            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Некорректное количество активаций или недостаточно средств!</b>',
-            parse_mode="HTML"
-        )
-
-
 @dp.callback_query(F.data.startswith("chek_copy_link:"))
 async def chek_copy_link_handler(call: CallbackQuery) -> None:
     chek_id = call.data.split(":")[1]
@@ -1236,7 +1157,10 @@ async def chek_copy_link_handler(call: CallbackQuery) -> None:
 
 
 @dp.callback_query(F.data.startswith("chek_manage:"))
-async def chek_manage_handler(call: CallbackQuery) -> None:
+async def chek_manage_handler(call: CallbackQuery, state: FSMContext = None) -> None:
+    if state:
+        await state.clear()
+
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
@@ -1279,7 +1203,7 @@ async def chek_pin_user_start(call: CallbackQuery, state: FSMContext) -> None:
             [
                 InlineKeyboardButton(
                     text="◀ Назад",
-                    callback_data=f"chek_manage:{chek_id}",
+                    callback_data=f"chek_limits_menu:{chek_id}",
                 )
             ]
         ]
@@ -1305,23 +1229,28 @@ async def chek_pin_user_process(message: Message, state: FSMContext) -> None:
         await message.answer(
             text,
             parse_mode="HTML",
-            reply_markup=get_chek_manage_keyboard(chek_id),
+            reply_markup=get_chek_limits_keyboard(chek_id),
         )
 
 
 @dp.callback_query(F.data.startswith("chek_unpin_user:"))
-async def chek_unpin_user_handler(call: CallbackQuery) -> None:
+async def chek_unpin_user_handler(call: CallbackQuery, state: FSMContext = None) -> None:
+    if state:
+        await state.clear()
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if chek:
         chek["target_user"] = None
         await call.answer("Чек откреплен!", show_alert=True)
-        await chek_manage_handler(call)
+        await chek_limits_menu_handler(call, state)
 
 
 @dp.callback_query(F.data.startswith("chek_limits_menu:"))
-async def chek_limits_menu_handler(call: CallbackQuery) -> None:
+async def chek_limits_menu_handler(call: CallbackQuery, state: FSMContext = None) -> None:
+    if state:
+        await state.clear()
+
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
@@ -1363,14 +1292,16 @@ async def chek_set_pass_start(call: CallbackQuery, state: FSMContext) -> None:
 
 
 @dp.callback_query(F.data.startswith("chek_remove_pass:"))
-async def chek_remove_pass_handler(call: CallbackQuery) -> None:
+async def chek_remove_pass_handler(call: CallbackQuery, state: FSMContext = None) -> None:
+    if state:
+        await state.clear()
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if chek:
         chek["password"] = None
         await call.answer("🔓 Пароль успешно удален!", show_alert=True)
-        await chek_limits_menu_handler(call)
+        await chek_limits_menu_handler(call, state)
 
 
 @dp.message(ChekState.waiting_for_password)
@@ -1393,13 +1324,13 @@ async def chek_set_pass_process(message: Message, state: FSMContext) -> None:
 
 
 @dp.callback_query(F.data.startswith("chek_toggle_premium:"))
-async def chek_toggle_premium_handler(call: CallbackQuery) -> None:
+async def chek_toggle_premium_handler(call: CallbackQuery, state: FSMContext = None) -> None:
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if chek:
         chek["only_premium"] = not chek["only_premium"]
-        await chek_limits_menu_handler(call)
+        await chek_limits_menu_handler(call, state)
 
 
 @dp.callback_query(F.data.startswith("chek_delete:"))
@@ -1996,7 +1927,6 @@ async def start_mines_game(call: CallbackQuery) -> None:
 
     user_id = call.from_user.id
 
-    # Проверка на наличие незавершенной игры (Мины или Башня)
     if user_id in user_active_game_msg:
         active_info = user_active_game_msg[user_id]
         prev_game_id = f"{active_info['chat_id']}_{active_info['message_id']}"
@@ -2374,7 +2304,6 @@ async def start_tower_game(call: CallbackQuery) -> None:
 
     user_id = call.from_user.id
 
-    # Проверка на наличие незавершенной игры (Мины или Башня)
     if user_id in user_active_game_msg:
         active_info = user_active_game_msg[user_id]
         prev_game_id = f"{active_info['chat_id']}_{active_info['message_id']}"
