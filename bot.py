@@ -1646,7 +1646,7 @@ async def process_check_pass_input(
 
     if chek.get("only_premium") and not getattr(user, "is_premium", False):
         await message.answer(
-            "<b>Этот чек доступен только дял премиум-пользователей !</b>",
+            "<b>Этот чек доступен только для премиум-пользователей !</b>",
             parse_mode="HTML",
         )
         await state.clear()
@@ -1716,7 +1716,7 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
 
         if chek.get("only_premium") and not getattr(user, "is_premium", False):
             await message.answer(
-                "<b>Этот чек доступен только дял премиум-пользователей !</b>",
+                "<b>Этот чек доступен только для премиум-пользователей !</b>",
                 parse_mode="HTML",
             )
             return
@@ -1725,7 +1725,7 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
             await state.update_data(target_chek_id=chek_id)
             await state.set_state(ChekState.waiting_for_check_pass_input)
             await message.answer(
-                "<b>Введите пароль дял использования чека:</b>",
+                "<b>Введите пароль для использования чека:</b>",
                 parse_mode="HTML",
             )
             return
@@ -2002,7 +2002,7 @@ async def start_mines_game(call: CallbackQuery) -> None:
             
             try:
                 await call.message.edit_text(
-                    "<b>У вас уже есть не законченная игра</b>",
+                    "<b>У вас уже есть незаконченная игра</b>",
                     parse_mode="HTML",
                     reply_markup=kb
                 )
@@ -2380,7 +2380,7 @@ async def start_tower_game(call: CallbackQuery) -> None:
             
             try:
                 await call.message.edit_text(
-                    "<b>У вас уже есть не законченная игра</b>",
+                    "<b>У вас уже есть незаконченная игра</b>",
                     parse_mode="HTML",
                     reply_markup=kb
                 )
@@ -2651,7 +2651,7 @@ async def chat_check_creation_handler(message: Message) -> None:
     amount_str = parts[1].replace("$", "").replace(",", ".")
     try:
         amount = float(amount_str)
-        if amount < 0.1:
+        if amount < 0.01:
             return
     except ValueError:
         return
@@ -2690,12 +2690,14 @@ async def chat_check_creation_handler(message: Message) -> None:
         formatted_amount = str(int(amount))
 
     text = f"<b>💸 Чек на {formatted_amount}${target_info}</b>"
+    
+    # Кнопка получения чека теперь использует callback_data вместо url (работает без пароля и в группе)
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="Получить",
-                    url=check_link,
+                    callback_data=f"activate_chek_btn:{chek_id}",
                 )
             ]
         ]
