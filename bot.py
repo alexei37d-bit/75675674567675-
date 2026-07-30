@@ -356,8 +356,7 @@ async def create_crypto_invoice(amount: float) -> dict:
     headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
     payload = {
         "asset": "USDT",
-        "amount": str(amount),
-        "currency_type": "crypto"
+        "amount": str(amount)
     }
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, json=payload) as resp:
@@ -1064,7 +1063,7 @@ async def deposit_start_handler(call: CallbackQuery, state: FSMContext) -> None:
 async def deposit_amount_process(message: Message, state: FSMContext) -> None:
     try:
         amount = float(message.text.replace("$", "").replace(",", ".").strip())
-        if amount <= 0.1:
+        if amount < 0.1:
             raise ValueError
     except ValueError:
         await message.answer("<b>❌ Введите корректную сумму больше 0.1 USDT:</b>", parse_mode="HTML")
