@@ -2601,7 +2601,7 @@ await safe_edit_message(
     call, text, build_tower_game_keyboard(game, finished=True)
 )
 del active_tower_games[game_id]
---- ИНТЕГРАЦИЯ ИГРЫ «БАСКЕТБОЛ» ---
+# --- ИНТЕГРАЦИЯ ИГРЫ «БАСКЕТБОЛ» ---
 @dp.callback_query(F.data.startswith("basketball_choose_bet"))
 async def basketball_choose_bet_handler(
 call: CallbackQuery, state: FSMContext
