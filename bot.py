@@ -1143,19 +1143,19 @@ def get_football_type_keyboard(bet: float, owner_id: int) -> InlineKeyboardMarku
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=f"⚽ Гол (x{football_coeffs['гол']})",
+                    text=f"Гол (x{football_coeffs['гол']})",
                     callback_data=f"football_bet_гол_{bet}:{owner_id}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text=f"❌ Мимо (x{football_coeffs['мимо']})",
+                    text=f"Мимо (x{football_coeffs['мимо']})",
                     callback_data=f"football_bet_мимо_{bet}:{owner_id}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text=f"🥅 Штанга (x{football_coeffs['штанга']})",
+                    text=f"Штанга (x{football_coeffs['штанга']})",
                     callback_data=f"football_bet_штанга_{bet}:{owner_id}",
                 )
             ],
@@ -2732,7 +2732,7 @@ async def select_basketball_bet_quick(call: CallbackQuery, state: FSMContext) ->
     text = (
         f'<b>🏀 Баскетбол</b>\n'
         f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
-        f'<b>Ставка: {bet:.2f} $</b>\n\n'
+        
         f'<b>Выберите исхода броска:</b>'
     )
     await safe_edit_message(call, text, get_basketball_type_keyboard(bet, owner_id))
@@ -2754,7 +2754,7 @@ async def process_basketball_custom_bet(message: Message, state: FSMContext) -> 
         text = (
             f'<b>🏀 Баскетбол</b>\n'
             f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
-            f'<b>Ставка: {bet:.2f} $</b>\n\n'
+            
             f'<b>Выберите исхода броска:</b>'
         )
         await message.answer(
@@ -2803,14 +2803,11 @@ async def process_basketball_bet(call: CallbackQuery) -> None:
         user_balances[user_id] = get_user_balance(user_id) + win_amount
         text = (
             f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы выиграли!\n\n'
-            f'Результат: {type_name}\n'
-            f'Коэффициент: x{result["multiplier"]}\n'
             f'Выигрыш: {win_amount:.2f} $</b>'
         )
     else:
         text = (
             f'<b><tg-emoji emoji-id="5452018153963948977">💥</tg-emoji> Вы проиграли!\n\n'
-            f'Ставка была на: {type_name}\n'
             f'Проигрыш: {bet:.2f} $</b>'
         )
 
@@ -2835,7 +2832,6 @@ async def basketball_repeat_handler(call: CallbackQuery) -> None:
     text = (
         f'<b>🏀 Баскетбол</b>\n'
         f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
-        f'<b>Ставка: {bet:.2f} $</b>\n\n'
         f'<b>Выберите исхода броска:</b>'
     )
     await safe_edit_message(call, text, get_basketball_type_keyboard(bet, owner_id))
@@ -2874,7 +2870,6 @@ async def select_football_bet_quick(call: CallbackQuery, state: FSMContext) -> N
     text = (
         f'<b>⚽ Футбол</b>\n'
         f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
-        f'<b>Ставка: {bet:.2f} $</b>\n\n'
         f'<b>Выберите исход удара:</b>'
     )
     await safe_edit_message(call, text, get_football_type_keyboard(bet, owner_id))
@@ -2896,7 +2891,6 @@ async def process_football_custom_bet(message: Message, state: FSMContext) -> No
         text = (
             f'<b>⚽ Футбол</b>\n'
             f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
-            f'<b>Ставка: {bet:.2f} $</b>\n\n'
             f'<b>Выберите исход удара:</b>'
         )
         await message.answer(
@@ -2945,14 +2939,11 @@ async def process_football_bet(call: CallbackQuery) -> None:
         user_balances[user_id] = get_user_balance(user_id) + win_amount
         text = (
             f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы выиграли!\n\n'
-            f'Результат: {type_name}\n'
-            f'Коэффициент: x{result["multiplier"]}\n'
             f'Выигрыш: {win_amount:.2f} $</b>'
         )
     else:
         text = (
             f'<b><tg-emoji emoji-id="5452018153963948977">💥</tg-emoji> Вы проиграли!\n\n'
-            f'Ставка была на: {type_name}\n'
             f'Проигрыш: {bet:.2f} $</b>'
         )
 
@@ -2977,7 +2968,6 @@ async def football_repeat_handler(call: CallbackQuery) -> None:
     text = (
         f'<b>⚽ Футбол</b>\n'
         f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
-        f'<b>Ставка: {bet:.2f} $</b>\n\n'
         f'<b>Выберите исход удара:</b>'
     )
     await safe_edit_message(call, text, get_football_type_keyboard(bet, owner_id))
