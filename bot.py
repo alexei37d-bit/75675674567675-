@@ -3,7 +3,8 @@ import asyncio
 import logging
 import time
 from aiogram import types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ParseMode
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.enums import ParseMode
 from aiogram.utils.exceptions import MessageToDeleteNotFound, MessageCantBeDeleted
 from config import Config
 
