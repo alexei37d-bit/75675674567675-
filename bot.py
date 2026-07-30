@@ -2696,7 +2696,6 @@ async def select_basketball_bet_quick(call: CallbackQuery, state: FSMContext) ->
     text = (
         f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Игра в Баскетбол</b>\n\n'
         f'💰 <b>Баланс:</b> {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n'
-        f'💰 <b>Ставка:</b> {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n\n'
         f'<b>Выберите исход броска:</b>'
     )
     await safe_edit_message(call, text, get_basketball_type_keyboard(bet, owner_id))
@@ -2718,7 +2717,7 @@ async def process_custom_basketball_bet(message: Message, state: FSMContext) -> 
         text = (
             f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Игра в Баскетбол</b>\n\n'
             f'💰 <b>Баланс:</b> {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n'
-            f'💰 <b>Ставка:</b> {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n\n'
+        
             f'<b>Выберите исход броска:</b>'
         )
         await message.answer(
@@ -2767,14 +2766,13 @@ async def basketball_bet_handler(call: CallbackQuery) -> None:
         user_balances[user_id] = get_user_balance(user_id) + win_amount
         text = (
             f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол | Победа!</b>\n\n'
-            f'🎯 <b>Прогноз:</b> {bet_type_name} (x{res["multiplier"]})\n'
+            f'<tg-emoji emoji-id=\"5309815458990433715\">🎮</tg-emoji> <b>Прогноз:</b> {bet_type_name} (x{res["multiplier"]})\n'
             f'🎉 <b>Вы выиграли:</b> {win_amount:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>'
         )
     else:
         text = (
             f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол | Проигрыш</b>\n\n'
-            f'🎯 <b>Прогноз:</b> {bet_type_name} (x{res["multiplier"]})\n'
-            f'❌ <b>Ставка {bet:.2f} сгорела.</b>'
+            f'<tg-emoji emoji-id=\"5309815458990433715\">🎮</tg-emoji> <b>Прогноз:</b> {bet_type_name} (x{res["multiplier"]})\n'
         )
 
     await dice_msg.answer(
@@ -2797,7 +2795,6 @@ async def basketball_repeat_handler(call: CallbackQuery) -> None:
     text = (
         f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Игра в Баскетбол</b>\n\n'
         f'💰 <b>Баланс:</b> {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n'
-        f'💰 <b>Ставка:</b> {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>\n\n'
         f'<b>Выберите исход броска:</b>'
     )
     await safe_edit_message(call, text, get_basketball_type_keyboard(bet, owner_id))
