@@ -5,7 +5,7 @@ import time
 from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.enums import ParseMode
-from aiogram.utils.exceptions import MessageToDeleteNotFound, MessageCantBeDeleted
+from aiogram.exceptions import TelegramBadRequest
 from config import Config
 
 logger = logging.getLogger(__name__)
