@@ -3320,9 +3320,9 @@ async def author_bet_process(call: CallbackQuery) -> None:
             await call.answer("❌ Недостаточно средств на балансе!", show_alert=True)
             return
         text = (
-            f'<b>🎰 Авторские игры</b>\n'
+            f'<b>м<tg-emoji emoji-id=\"5400362079783770689\">🐳</tg-emoji> Авторские игры</b>\n'
             f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
-            f'<b>Ставка: {bet:.2f} $ — Выберите исход (эмодзи):</b>'
+            f'<b>Ставка: {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji> </b>'
         )
         await safe_edit_message(call, text, get_author_type_keyboard(bet, owner_id))
         return
