@@ -25,12 +25,14 @@ logger = logging.getLogger(__name__)
 
 TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
 CRYPTO_PAY_TOKEN = "548204:AAZOXSPMBWOj3XO29UyRcrxpgxlzujtetPO"
-REQUIRED_CHANNEL = "@project_impassL"
 
 dp = Dispatcher()
 
 # --- АДМИН-ПАНЕЛЬ ---
 ADMIN_IDS = {7921743592}
+
+REQUIRED_CHANNEL = "@project_impassL"
+BETS_CHANNEL = "@test_k_anal"
 
 class AdminState(StatesGroup):
     waiting_for_add_admin = State()
@@ -39,6 +41,49 @@ class AdminState(StatesGroup):
     waiting_for_sub_balance_user = State()
     waiting_for_sub_balance_amount = State()
     waiting_for_broadcast_text = State()
+
+async def check_subscription(bot: Bot, user_id: int) -> bool:
+    try:
+        member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
+        return member.status in ["creator", "administrator", "member"]
+    except Exception:
+        return False
+
+async def get_subscription_keyboard(bot: Bot) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📢 Подписаться", url=f"https://t.me/{REQUIRED_CHANNEL.replace('@', '')}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✅ Проверить подписку", callback_data="check_subscription_again"
+                )
+            ]
+        ]
+    )
+
+async def log_bet_to_channel(bot: Bot, user, game_name: str, bet: float, outcome: str, win_amount: float = 0.0):
+    user_link = f'<a href="tg://user?id={user.id}">{html.quote(user.full_name)}</a>'
+    if win_amount > 0:
+        status_text = f"🎉 Выигрыш: <b>{win_amount:.2f} $</b>"
+    else:
+        status_text = f"❌ Проигрыш: <b>{bet:.2f} $</b>"
+
+    text = (
+        f"🎰 <b>Новая ставка!</b>\n"
+        f"👤 Игрок: {user_link} (<code>{user.id}</code>)\n"
+        f"🎮 Игра: <b>{game_name}</b>\n"
+        f"💵 Ставка: <b>{bet:.2f} $</b>\n"
+        f"🎯 Исход: <b>{outcome}</b>\n"
+        f"{status_text}"
+    )
+    try:
+        await bot.send_message(chat_id=BETS_CHANNEL, text=text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Failed to log bet to channel: {e}")
 
 def get_admin_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
@@ -67,6 +112,11 @@ def get_admin_keyboard() -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(
                     text="📢 Рассылка", callback_data="admin_broadcast"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🏀 Канал ставок", url=f"https://t.me/{BETS_CHANNEL.replace('@', '')}"
                 )
             ],
             [
@@ -295,6 +345,19 @@ async def admin_broadcast_process(message: Message, state: FSMContext) -> None:
         parse_mode="HTML",
         reply_markup=get_admin_keyboard(),
     )
+
+@dp.callback_query(F.data == "check_subscription_again")
+async def check_subscription_again_handler(call: CallbackQuery) -> None:
+    is_subbed = await check_subscription(call.bot, call.from_user.id)
+    if is_subbed:
+        await call.answer("✅ Подписка подтверждена!", show_alert=True)
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+    else:
+        await call.answer("❌ Вы все еще не подписались на канал!", show_alert=True)
+
 # --- КОНЕЦ АДМИН-ПАНЕЛИ ---
 
 user_balances = {}
@@ -327,9 +390,6 @@ created_cheks = {}
 # Хранилище активных сообщений/игр пользователя
 user_active_game_msg = {}
 
-# Хранилище обработанных инвойсов
-processed_invoices = set()
-
 class MinesState(StatesGroup):
     waiting_for_custom_bet = State()
     waiting_for_custom_mines = State()
@@ -355,45 +415,6 @@ class DepositState(StatesGroup):
     waiting_for_amount = State()
 
 FIELD_SIZE = 25
-
-async def check_subscription(bot: Bot, user_id: int) -> bool:
-    try:
-        member = await bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
-        return member.status in ["creator", "administrator", "member"]
-    except Exception:
-        return True
-
-def get_sub_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="📢 Подписаться на канал",
-                    url=f"https://t.me/{REQUIRED_CHANNEL.replace('@', '')}",
-                    icon_custom_emoji_id="5303170015007119865"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="🔄 Проверить подписку",
-                    callback_data="check_subscription_btn",
-                    icon_custom_emoji_id="5278413853577734640"
-                )
-            ]
-        ]
-    )
-
-@dp.callback_query(F.data == "check_subscription_btn")
-async def check_sub_callback(call: CallbackQuery):
-    is_sub = await check_subscription(call.bot, call.from_user.id)
-    if is_sub:
-        await call.answer("✅ Вы успешно подписались!", show_alert=True)
-        try:
-            await call.message.delete()
-        except Exception:
-            pass
-    else:
-        await call.answer("❌ Вы всё ещё не подписаны на канал!", show_alert=True)
 
 # --- ИНТЕГРАЦИЯ CRYPTO BOT ---
 async def create_crypto_invoice(amount: float) -> dict:
@@ -467,161 +488,149 @@ main_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
-def get_menu_inline_keyboard(owner_id: int) -> InlineKeyboardMarkup:
+menu_inline_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Профиль",
+                icon_custom_emoji_id="5308004189677330658",
+                callback_data="open_profile",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="Играть",
+                icon_custom_emoji_id="5471895876790161593",
+                callback_data="back_to_games",
+            ),
+            InlineKeyboardButton(
+                text="Кошелек",
+                icon_custom_emoji_id="5197686464325915345",
+                callback_data="open_wallet_inline",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="Чеки",
+                icon_custom_emoji_id="5452157517062770940",
+                callback_data="open_cheks_menu",
+            )
+        ],
+    ]
+)
+
+wallet_inline_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Пополнить",
+                icon_custom_emoji_id="5255805270285653933",
+                callback_data="deposit",
+            ),
+            InlineKeyboardButton(
+                text="Вывести",
+                icon_custom_emoji_id="5255868234506213301",
+                callback_data="withdraw",
+            ),
+        ]
+    ]
+)
+
+profile_inline_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Пополнить",
+                icon_custom_emoji_id="5255805270285653933",
+                callback_data="deposit",
+            ),
+            InlineKeyboardButton(
+                text="Вывести",
+                icon_custom_emoji_id="5255868234506213301",
+                callback_data="withdraw",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="◀ Назад",
+                callback_data="close_profile",
+            )
+        ],
+    ]
+)
+
+games_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Мины",
+                icon_custom_emoji_id="5452018153963948977",
+                callback_data="mines_choose_bet",
+            ),
+            InlineKeyboardButton(
+                text="Башня",
+                icon_custom_emoji_id="5449397725697187601",
+                callback_data="tower_choose_bet",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="Баскетбол",
+                icon_custom_emoji_id="5465317563145686803",
+                callback_data="basketball_choose_bet",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="Футбол",
+                icon_custom_emoji_id="5319298377412812014",
+                callback_data="football_choose_bet",
+            )
+        ]
+    ]
+)
+
+def get_cheks_main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Профиль",
-                    icon_custom_emoji_id="5308004189677330658",
-                    callback_data=f"open_profile:{owner_id}",
+                    text="Создать чек", callback_data="chek_create_start"
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="Играть",
-                    icon_custom_emoji_id="5471895876790161593",
-                    callback_data=f"back_to_games:{owner_id}",
-                ),
-                InlineKeyboardButton(
-                    text="Кошелек",
-                    icon_custom_emoji_id="5197686464325915345",
-                    callback_data=f"open_wallet_inline:{owner_id}",
-                ),
+                    text="Активные чеки", callback_data="chek_active_list"
+                )
             ],
             [
                 InlineKeyboardButton(
-                    text="Чеки",
-                    icon_custom_emoji_id="5452157517062770940",
-                    callback_data=f"open_cheks_menu:{owner_id}",
+                    text="◀ Назад", callback_data="close_profile"
                 )
             ],
         ]
     )
 
-menu_inline_keyboard = get_menu_inline_keyboard(0)
-
-def get_wallet_inline_keyboard(owner_id: int) -> InlineKeyboardMarkup:
+def get_chek_amount_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Пополнить",
-                    icon_custom_emoji_id="5255805270285653933",
-                    callback_data=f"deposit:{owner_id}",
+                    text="0.1$", callback_data="chek_amount_0.1"
                 ),
                 InlineKeyboardButton(
-                    text="Вывести",
-                    icon_custom_emoji_id="5255868234506213301",
-                    callback_data=f"withdraw:{owner_id}",
-                ),
-            ]
-        ]
-    )
-
-wallet_inline_keyboard = get_wallet_inline_keyboard(0)
-
-def get_profile_inline_keyboard(owner_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Пополнить",
-                    icon_custom_emoji_id="5255805270285653933",
-                    callback_data=f"deposit:{owner_id}",
-                ),
-                InlineKeyboardButton(
-                    text="Вывести",
-                    icon_custom_emoji_id="5255868234506213301",
-                    callback_data=f"withdraw:{owner_id}",
+                    text="Весь баланс", callback_data="chek_amount_all"
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="◀ Назад",
-                    callback_data=f"close_profile:{owner_id}",
+                    text="◀ Назад", callback_data="open_cheks_menu"
                 )
             ],
         ]
     )
 
-profile_inline_keyboard = get_profile_inline_keyboard(0)
-
-def get_games_keyboard(owner_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Мины",
-                    icon_custom_emoji_id="5452018153963948977",
-                    callback_data=f"mines_choose_bet:{owner_id}",
-                ),
-                InlineKeyboardButton(
-                    text="Башня",
-                    icon_custom_emoji_id="5449397725697187601",
-                    callback_data=f"tower_choose_bet:{owner_id}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Баскетбол",
-                    icon_custom_emoji_id="5465317563145686803",
-                    callback_data=f"basketball_choose_bet:{owner_id}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Футбол",
-                    icon_custom_emoji_id="5319298377412812014",
-                    callback_data=f"football_choose_bet:{owner_id}",
-                )
-            ]
-        ]
-    )
-
-games_keyboard = get_games_keyboard(0)
-
-def get_cheks_main_keyboard(owner_id: int = 0) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="Создать чек", callback_data=f"chek_create_start:{owner_id}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="Активные чеки", callback_data=f"chek_active_list:{owner_id}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="◀ Назад", callback_data=f"close_profile:{owner_id}"
-                )
-            ],
-        ]
-    )
-
-def get_chek_amount_keyboard(owner_id: int = 0) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="0.1$", callback_data=f"chek_amount_0.1:{owner_id}"
-                ),
-                InlineKeyboardButton(
-                    text="Весь баланс", callback_data=f"chek_amount_all:{owner_id}"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="◀ Назад", callback_data=f"open_cheks_menu:{owner_id}"
-                )
-            ],
-        ]
-    )
-
-def get_chek_manage_keyboard(chek_id: str, owner_id: int = 0) -> InlineKeyboardMarkup:
+def get_chek_manage_keyboard(chek_id: str) -> InlineKeyboardMarkup:
     chek = created_cheks.get(chek_id, {})
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -633,40 +642,40 @@ def get_chek_manage_keyboard(chek_id: str, owner_id: int = 0) -> InlineKeyboardM
                 InlineKeyboardButton(
                     text="Скопировать",
                     icon_custom_emoji_id="5377535110289576661",
-                    callback_data=f"chek_copy_link:{chek_id}:{owner_id}",
+                    callback_data=f"chek_copy_link:{chek_id}",
                 ),
             ],
             [
                 InlineKeyboardButton(
                     text="Ограничения",
                     icon_custom_emoji_id="5312462735097764089",
-                    callback_data=f"chek_limits_menu:{chek_id}:{owner_id}",
+                    callback_data=f"chek_limits_menu:{chek_id}",
                 ),
                 InlineKeyboardButton(
                     text="Удалить чек",
                     icon_custom_emoji_id="5296410453742753454",
-                    callback_data=f"chek_delete:{chek_id}:{owner_id}",
+                    callback_data=f"chek_delete:{chek_id}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="◀ Назад", callback_data=f"open_cheks_menu:{owner_id}"
+                    text="◀ Назад", callback_data="open_cheks_menu"
                 )
             ],
         ]
     )
 
-def get_chek_limits_keyboard(chek_id: str, owner_id: int = 0) -> InlineKeyboardMarkup:
+def get_chek_limits_keyboard(chek_id: str) -> InlineKeyboardMarkup:
     chek = created_cheks.get(chek_id, {})
 
     if chek.get("password"):
         pass_text = "Удалить пароль"
         pass_emoji = "5444856076954520455"
-        pass_cbd = f"chek_remove_pass:{chek_id}:{owner_id}"
+        pass_cbd = f"chek_remove_pass:{chek_id}"
     else:
         pass_text = "Поставить пароль"
         pass_emoji = "5312281637801729565"
-        pass_cbd = f"chek_set_pass:{chek_id}:{owner_id}"
+        pass_cbd = f"chek_set_pass:{chek_id}"
 
     prem_text = (
         "Для всех игроков"
@@ -676,10 +685,10 @@ def get_chek_limits_keyboard(chek_id: str, owner_id: int = 0) -> InlineKeyboardM
 
     if chek.get("target_user"):
         pin_limit_text = "Открепить чек"
-        pin_limit_cbd = f"chek_unpin_user:{chek_id}:{owner_id}"
+        pin_limit_cbd = f"chek_unpin_user:{chek_id}"
     else:
         pin_limit_text = "Закрепить за пользователем"
-        pin_limit_cbd = f"chek_pin_user:{chek_id}:{owner_id}"
+        pin_limit_cbd = f"chek_pin_user:{chek_id}"
 
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -694,7 +703,7 @@ def get_chek_limits_keyboard(chek_id: str, owner_id: int = 0) -> InlineKeyboardM
                 InlineKeyboardButton(
                     text=prem_text,
                     icon_custom_emoji_id="5303170015007119865",
-                    callback_data=f"chek_toggle_premium:{chek_id}:{owner_id}",
+                    callback_data=f"chek_toggle_premium:{chek_id}",
                 )
             ],
             [
@@ -706,7 +715,7 @@ def get_chek_limits_keyboard(chek_id: str, owner_id: int = 0) -> InlineKeyboardM
             ],
             [
                 InlineKeyboardButton(
-                    text="◀ Назад", callback_data=f"chek_manage:{chek_id}:{owner_id}"
+                    text="◀ Назад", callback_data=f"chek_manage:{chek_id}"
                 )
             ],
         ]
@@ -1121,7 +1130,7 @@ def get_basketball_type_keyboard(bet: float, owner_id: int) -> InlineKeyboardMar
             ],
             [
                 InlineKeyboardButton(
-                    text="◀ Изменить баланс",
+                    text="◀ Изменить ставку",
                     callback_data=f"basketball_choose_bet:{owner_id}",
                 )
             ],
@@ -1216,7 +1225,7 @@ def get_football_type_keyboard(bet: float, owner_id: int) -> InlineKeyboardMarku
             ],
             [
                 InlineKeyboardButton(
-                    text="◀ Изменить баланс",
+                    text="◀ Изменить ставку",
                     callback_data=f"football_choose_bet:{owner_id}",
                 )
             ],
@@ -1279,7 +1288,7 @@ async def safe_edit_message(
             raise e
 
 def check_owner(call: CallbackQuery, owner_id: int) -> bool:
-    if owner_id != 0 and call.from_user.id != owner_id:
+    if call.from_user.id != owner_id:
         return False
     return True
 
@@ -1288,19 +1297,13 @@ async def locked_cell_handler(call: CallbackQuery) -> None:
     await call.answer()
 
 # --- ПОПОЛНЕНИЕ СЧЕТА CRYPTO BOT ---
-@dp.callback_query(F.data.startswith("deposit"))
+@dp.callback_query(F.data == "deposit")
 async def deposit_start_handler(call: CallbackQuery, state: FSMContext) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
     await state.set_state(DepositState.waiting_for_amount)
     text = '<tg-emoji emoji-id="5449789954995559460">💎</tg-emoji> Введите сумму для пополнения баланса в USDT (например: 0,10$):'
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="◀ Назад", callback_data=f"open_wallet_inline:{owner_id}")]
+            [InlineKeyboardButton(text="◀ Назад", callback_data="open_wallet_inline")]
         ]
     )
     await safe_edit_message(call, text, kb)
@@ -1324,12 +1327,11 @@ async def deposit_amount_process(message: Message, state: FSMContext) -> None:
     invoice_id = invoice["invoice_id"]
     pay_url = invoice["pay_url"]
 
-    user_id = message.from_user.id
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="💵 Оплатить", url=pay_url)],
-            [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_pay:{invoice_id}:{amount}:{user_id}")],
-            [InlineKeyboardButton(text="◀ Назад", callback_data=f"open_wallet_inline:{user_id}")]
+            [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_pay:{invoice_id}:{amount}")],
+            [InlineKeyboardButton(text="◀ Назад", callback_data="open_wallet_inline")]
         ]
     )
 
@@ -1344,64 +1346,36 @@ async def check_pay_handler(call: CallbackQuery) -> None:
     parts = call.data.split(":")
     invoice_id = int(parts[1])
     amount = float(parts[2])
-    owner_id = int(parts[3]) if len(parts) > 3 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваш счет!", show_alert=True)
-        return
-
-    if invoice_id in processed_invoices:
-        await call.answer("✅ Счет уже был успешно зачислен!", show_alert=True)
-        return
 
     status = await get_crypto_invoice_status(invoice_id)
     if status == "paid":
-        processed_invoices.add(invoice_id)
         user_id = call.from_user.id
         user_balances[user_id] = get_user_balance(user_id) + amount
         await call.answer("✅ Оплата успешно подтверждена!", show_alert=True)
         text = f"<b>🎉 Баланс успешно пополнен на {amount:.2f} $!</b>"
-        await safe_edit_message(call, text, get_wallet_inline_keyboard(user_id))
+        await safe_edit_message(call, text, wallet_inline_keyboard)
     else:
         await call.answer("❌ Счет еще не оплачен!", show_alert=True)
 
-@dp.callback_query(F.data.startswith("withdraw"))
+@dp.callback_query(F.data == "withdraw")
 async def withdraw_handler(call: CallbackQuery) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
     await call.answer("Для вывода средств обратитесь к администратору.", show_alert=True)
 
 # --- РАЗДЕЛ ЧЕКИ ---
-@dp.callback_query(F.data.startswith("open_cheks_menu"))
+@dp.callback_query(F.data == "open_cheks_menu")
 async def open_cheks_menu_handler(call: CallbackQuery, state: FSMContext) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
     await state.clear()
     text = (
         '<b><tg-emoji emoji-id=\"5307773751796996779\">🎟</tg-emoji></b>'
         '<b>Создайте чек для мгновенной отправки средств пользователю или группе пользователей - </b>'
         '<b>просто укажите количество активаций!</b>'
     )
-    await safe_edit_message(call, text, get_cheks_main_keyboard(owner_id))
+    await safe_edit_message(call, text, get_cheks_main_keyboard())
 
-@dp.callback_query(F.data.startswith("chek_create_start"))
+@dp.callback_query(F.data == "chek_create_start")
 async def chek_create_start_handler(
     call: CallbackQuery, state: FSMContext
 ) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
     if call.message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
         await call.answer()
         await call.message.answer(
@@ -1423,23 +1397,15 @@ async def chek_create_start_handler(
     text = (
         '<b><tg-emoji emoji-id="5449526218233779946">👛</tg-emoji> Отправьте сумму 1 активации :</b>'
     )
-    await safe_edit_message(call, text, get_chek_amount_keyboard(owner_id))
+    await safe_edit_message(call, text, get_chek_amount_keyboard())
 
 @dp.callback_query(F.data.startswith("chek_amount_"))
 async def process_chek_quick_amount(
     call: CallbackQuery, state: FSMContext
 ) -> None:
-    parts = call.data.split(":")
-    choice_part = parts[0]
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
     user_id = call.from_user.id
     balance = get_user_balance(user_id)
-    choice = choice_part.split("_")[2]
+    choice = call.data.split("_")[2]
 
     if choice == "0.1":
         amount = 0.10
@@ -1473,7 +1439,7 @@ async def process_chek_quick_amount(
         f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> {title_str} успешно создан!\n\n'
         f"Ссылка на чек: <code>{check_link}</code></b>"
     )
-    await safe_edit_message(call, text, get_chek_manage_keyboard(chek_id, owner_id))
+    await safe_edit_message(call, text, get_chek_manage_keyboard(chek_id))
 
 @dp.message(ChekState.waiting_for_amount)
 async def process_chek_amount_input(
@@ -1518,7 +1484,7 @@ async def process_chek_amount_input(
             f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> {title_str} успешно создан!\n\n'
             f"Ссылка на чек: <code>{check_link}</code></b>"
         )
-        await message.answer(text, parse_mode="HTML", reply_markup=get_chek_manage_keyboard(chek_id, user_id))
+        await message.answer(text, parse_mode="HTML", reply_markup=get_chek_manage_keyboard(chek_id))
     except ValueError:
         await message.answer(
             f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Некорректная сумма! Введите число от 0.01 до {balance:.2f}:</b>',
@@ -1527,14 +1493,7 @@ async def process_chek_amount_input(
 
 @dp.callback_query(F.data.startswith("chek_copy_link:"))
 async def chek_copy_link_handler(call: CallbackQuery) -> None:
-    parts = call.data.split(":")
-    chek_id = parts[1]
-    owner_id = int(parts[2]) if len(parts) > 2 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
+    chek_id = call.data.split(":")[1]
     bot_info = await call.bot.get_me()
     check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
     await call.answer(check_link, show_alert=False)
@@ -1543,14 +1502,7 @@ async def chek_copy_link_handler(call: CallbackQuery) -> None:
 async def chek_manage_handler(call: CallbackQuery, state: FSMContext = None) -> None:
     if state:
         await state.clear()
-    parts = call.data.split(":")
-    chek_id = parts[1]
-    owner_id = int(parts[2]) if len(parts) > 2 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
+    chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if not chek:
@@ -1574,18 +1526,11 @@ async def chek_manage_handler(call: CallbackQuery, state: FSMContext = None) -> 
         f"Ссылка на чек: <code>{check_link}</code>\n"
         f"Осталось активаций: {chek['rem_activations']}/{activations}{target_info}</b>"
     )
-    await safe_edit_message(call, text, get_chek_manage_keyboard(chek_id, owner_id))
+    await safe_edit_message(call, text, get_chek_manage_keyboard(chek_id))
 
 @dp.callback_query(F.data.startswith("chek_pin_user:"))
 async def chek_pin_user_start(call: CallbackQuery, state: FSMContext) -> None:
-    parts = call.data.split(":")
-    chek_id = parts[1]
-    owner_id = int(parts[2]) if len(parts) > 2 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
+    chek_id = call.data.split(":")[1]
     await state.update_data(target_chek_id=chek_id)
     await state.set_state(ChekState.waiting_for_target_user)
 
@@ -1598,7 +1543,7 @@ async def chek_pin_user_start(call: CallbackQuery, state: FSMContext) -> None:
             [
                 InlineKeyboardButton(
                     text="◀ Назад",
-                    callback_data=f"chek_manage:{chek_id}:{owner_id}",
+                    callback_data=f"chek_manage:{chek_id}",
                 )
             ]
         ]
@@ -1623,19 +1568,12 @@ async def chek_pin_user_process(message: Message, state: FSMContext) -> None:
         await message.answer(
             text,
             parse_mode="HTML",
-            reply_markup=get_chek_manage_keyboard(chek_id, message.from_user.id),
+            reply_markup=get_chek_manage_keyboard(chek_id),
         )
 
 @dp.callback_query(F.data.startswith("chek_unpin_user:"))
 async def chek_unpin_user_handler(call: CallbackQuery, state: FSMContext) -> None:
-    parts = call.data.split(":")
-    chek_id = parts[1]
-    owner_id = int(parts[2]) if len(parts) > 2 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
+    chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if chek:
@@ -1647,14 +1585,7 @@ async def chek_unpin_user_handler(call: CallbackQuery, state: FSMContext) -> Non
 async def chek_limits_menu_handler(call: CallbackQuery, state: FSMContext = None) -> None:
     if state:
         await state.clear()
-    parts = call.data.split(":")
-    chek_id = parts[1]
-    owner_id = int(parts[2]) if len(parts) > 2 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
+    chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if not chek:
@@ -1671,18 +1602,11 @@ async def chek_limits_menu_handler(call: CallbackQuery, state: FSMContext = None
         f"• Только Telegram Premium: {only_prem}\n"
         f"• Закреплен за: {target_info}</b>"
     )
-    await safe_edit_message(call, text, get_chek_limits_keyboard(chek_id, owner_id))
+    await safe_edit_message(call, text, get_chek_limits_keyboard(chek_id))
 
 @dp.callback_query(F.data.startswith("chek_set_pass:"))
 async def chek_set_pass_start(call: CallbackQuery, state: FSMContext) -> None:
-    parts = call.data.split(":")
-    chek_id = parts[1]
-    owner_id = int(parts[2]) if len(parts) > 2 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
+    chek_id = call.data.split(":")[1]
     await state.update_data(target_chek_id=chek_id)
     await state.set_state(ChekState.waiting_for_password)
 
@@ -1692,7 +1616,7 @@ async def chek_set_pass_start(call: CallbackQuery, state: FSMContext) -> None:
             [
                 InlineKeyboardButton(
                     text="◀ Назад",
-                    callback_data=f"chek_limits_menu:{chek_id}:{owner_id}",
+                    callback_data=f"chek_limits_menu:{chek_id}",
                 )
             ]
         ]
@@ -1701,14 +1625,7 @@ async def chek_set_pass_start(call: CallbackQuery, state: FSMContext) -> None:
 
 @dp.callback_query(F.data.startswith("chek_remove_pass:"))
 async def chek_remove_pass_handler(call: CallbackQuery, state: FSMContext) -> None:
-    parts = call.data.split(":")
-    chek_id = parts[1]
-    owner_id = int(parts[2]) if len(parts) > 2 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
+    chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if chek:
@@ -1731,19 +1648,12 @@ async def chek_set_pass_process(message: Message, state: FSMContext) -> None:
         await message.answer(
             text,
             parse_mode="HTML",
-            reply_markup=get_chek_limits_keyboard(chek_id, message.from_user.id),
+            reply_markup=get_chek_limits_keyboard(chek_id),
         )
 
 @dp.callback_query(F.data.startswith("chek_toggle_premium:"))
 async def chek_toggle_premium_handler(call: CallbackQuery, state: FSMContext) -> None:
-    parts = call.data.split(":")
-    chek_id = parts[1]
-    owner_id = int(parts[2]) if len(parts) > 2 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
+    chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if chek:
@@ -1752,14 +1662,7 @@ async def chek_toggle_premium_handler(call: CallbackQuery, state: FSMContext) ->
 
 @dp.callback_query(F.data.startswith("chek_delete:"))
 async def chek_delete_handler(call: CallbackQuery) -> None:
-    parts = call.data.split(":")
-    chek_id = parts[1]
-    owner_id = int(parts[2]) if len(parts) > 2 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
+    chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
     if chek:
@@ -1775,15 +1678,8 @@ async def chek_delete_handler(call: CallbackQuery) -> None:
         except TelegramBadRequest:
             pass
 
-@dp.callback_query(F.data.startswith("chek_active_list"))
+@dp.callback_query(F.data == "chek_active_list")
 async def chek_active_list_handler(call: CallbackQuery) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
     user_id = call.from_user.id
     user_cheks = [
         c for c in created_cheks.values() if c["owner_id"] == user_id
@@ -1794,7 +1690,7 @@ async def chek_active_list_handler(call: CallbackQuery) -> None:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="◀ Назад", callback_data=f"open_cheks_menu:{owner_id}"
+                        text="◀ Назад", callback_data="open_cheks_menu"
                     )
                 ]
             ]
@@ -1810,7 +1706,7 @@ async def chek_active_list_handler(call: CallbackQuery) -> None:
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    text=btn_text, callback_data=f"chek_manage:{c['id']}:{owner_id}"
+                    text=btn_text, callback_data=f"chek_manage:{c['id']}"
                 )
             ]
         )
@@ -1818,7 +1714,7 @@ async def chek_active_list_handler(call: CallbackQuery) -> None:
     keyboard.append(
         [
             InlineKeyboardButton(
-                text="◀ Назад", callback_data=f"open_cheks_menu:{owner_id}"
+                text="◀ Назад", callback_data="open_cheks_menu"
             )
         ]
     )
@@ -1952,6 +1848,17 @@ async def complete_chek_activation(
 async def activate_chek_btn_handler(
     call: CallbackQuery, state: FSMContext
 ) -> None:
+    is_subbed = await check_subscription(call.bot, call.from_user.id)
+    if not is_subbed:
+        kb = await get_subscription_keyboard(call.bot)
+        await call.message.answer(
+            f"<b>⚠️ Чтобы активировать чек, вы должны быть подписаны на канал {REQUIRED_CHANNEL}!</b>",
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+        await call.answer()
+        return
+
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
 
@@ -1961,16 +1868,6 @@ async def activate_chek_btn_handler(
 
     user = call.from_user
     user_id = user.id
-
-    is_sub = await check_subscription(call.bot, user_id)
-    if not is_sub:
-        await call.message.answer(
-            "<b>Для активации чека необходимо подписаться на наш канал!</b>",
-            parse_mode="HTML",
-            reply_markup=get_sub_keyboard()
-        )
-        await call.answer()
-        return
 
     if "activated_users" in chek and user_id in chek["activated_users"]:
         await call.answer("Этот чек уже активирован!", show_alert=True)
@@ -2002,6 +1899,16 @@ async def activate_chek_btn_handler(
 async def process_check_pass_input(
     message: Message, state: FSMContext
 ) -> None:
+    is_subbed = await check_subscription(message.bot, message.from_user.id)
+    if not is_subbed:
+        kb = await get_subscription_keyboard(message.bot)
+        await message.answer(
+            f"<b>⚠️ Чтобы активировать чек, вы должны быть подписаны на канал {REQUIRED_CHANNEL}!</b>",
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+        return
+
     data = await state.get_data()
     chek_id = data.get("target_chek_id")
     chek = created_cheks.get(chek_id)
@@ -2013,16 +1920,6 @@ async def process_check_pass_input(
 
     user = message.from_user
     user_id = user.id
-
-    is_sub = await check_subscription(message.bot, user_id)
-    if not is_sub:
-        await message.answer(
-            "<b>Для активации чека необходимо подписаться на наш канал!</b>",
-            parse_mode="HTML",
-            reply_markup=get_sub_keyboard()
-        )
-        await state.clear()
-        return
 
     if "activated_users" in chek and user_id in chek["activated_users"]:
         await message.answer(
@@ -2092,12 +1989,13 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
             await message.answer("<b>Чек не найден!</b>", parse_mode="HTML")
             return
 
-        is_sub = await check_subscription(message.bot, user_id)
-        if not is_sub:
+        is_subbed = await check_subscription(message.bot, user_id)
+        if not is_subbed:
+            kb = await get_subscription_keyboard(message.bot)
             await message.answer(
-                "<b>Для активации чека необходимо подписаться на наш канал!</b>",
+                f"<b>⚠️ Чтобы активировать чек, вы должны быть подписаны на канал {REQUIRED_CHANNEL}!</b>",
                 parse_mode="HTML",
-                reply_markup=get_sub_keyboard()
+                reply_markup=kb,
             )
             return
 
@@ -2145,31 +2043,19 @@ async def menu_handler(message: Message) -> None:
         f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
     await message.answer(
-        text=text, parse_mode="HTML", reply_markup=get_menu_inline_keyboard(user_id)
+        text=text, parse_mode="HTML", reply_markup=menu_inline_keyboard
     )
 
-@dp.callback_query(F.data.startswith("open_profile"))
+@dp.callback_query(F.data == "open_profile")
 async def open_profile_callback(call: CallbackQuery) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
     user_id = call.from_user.id
     full_name = call.from_user.full_name if call.from_user else "Игрок"
 
     text = build_profile_text(user_id, full_name)
-    await safe_edit_message(call, text, get_profile_inline_keyboard(user_id))
+    await safe_edit_message(call, text, profile_inline_keyboard)
 
-@dp.callback_query(F.data.startswith("close_profile"))
+@dp.callback_query(F.data == "close_profile")
 async def close_profile_handler(call: CallbackQuery) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
     user_id = call.from_user.id
     balance = get_user_balance(user_id)
 
@@ -2177,16 +2063,10 @@ async def close_profile_handler(call: CallbackQuery) -> None:
         '<b><tg-emoji emoji-id="5278702045883292456">🛍</tg-emoji> Выберите действие!\n\n'
         f'<tg-emoji emoji-id="5242253527480311898">🪙</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
-    await safe_edit_message(call, text, get_menu_inline_keyboard(user_id))
+    await safe_edit_message(call, text, menu_inline_keyboard)
 
-@dp.callback_query(F.data.startswith("open_wallet_inline"))
+@dp.callback_query(F.data == "open_wallet_inline")
 async def open_wallet_inline_handler(call: CallbackQuery) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваше меню!", show_alert=True)
-        return
-
     user_id = call.from_user.id
     balance = get_user_balance(user_id)
 
@@ -2194,7 +2074,7 @@ async def open_wallet_inline_handler(call: CallbackQuery) -> None:
         f'<b><tg-emoji emoji-id="5470019396988606408">💵</tg-emoji> '
         f"Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
     )
-    await safe_edit_message(call, text, get_wallet_inline_keyboard(user_id))
+    await safe_edit_message(call, text, wallet_inline_keyboard)
 
 @dp.message(F.text.in_(["Кошелек", "Баланс", "/wallet", "/balance"]))
 async def wallet_handler(message: Message) -> None:
@@ -2206,7 +2086,7 @@ async def wallet_handler(message: Message) -> None:
         f"Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id=\"5305445793623218874\">💲</tg-emoji></b>"
     )
     await message.answer(
-        text=text, parse_mode="HTML", reply_markup=get_wallet_inline_keyboard(user_id)
+        text=text, parse_mode="HTML", reply_markup=wallet_inline_keyboard
     )
 
 @dp.message(F.text.in_(["Играть", "/play"]))
@@ -2219,7 +2099,7 @@ async def play_handler(message: Message) -> None:
         f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
     await message.answer(
-        text=text, parse_mode="HTML", reply_markup=get_games_keyboard(user_id)
+        text=text, parse_mode="HTML", reply_markup=games_keyboard
     )
 
 @dp.callback_query(F.data.startswith("back_to_games"))
@@ -2240,7 +2120,7 @@ async def back_to_games_handler(
         '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру для ставки!\n\n'
         f'<tg-emoji emoji-id="5307942883314147223">🏆</tg-emoji> Баланс: </b><code>{balance:.2f}</code><b> <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>'
     )
-    await safe_edit_message(call, text, get_games_keyboard(user_id))
+    await safe_edit_message(call, text, games_keyboard)
 
 @dp.callback_query(F.data.startswith("select_bet_"))
 async def select_bet_quick(call: CallbackQuery, state: FSMContext) -> None:
@@ -2490,6 +2370,8 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
         user_active_game_msg.pop(user_id, None)
 
+        await log_bet_to_channel(call.bot, call.from_user, "Мины 💣", game_data["bet"], "Подорвался на мине", 0.0)
+
         text = (
             f'<b><tg-emoji emoji-id="5452018153963948977">💥</tg-emoji> Вы подорвались на мине!\n'
             f'Проигрыш: {game_data["bet"]:.2f} $</b>'
@@ -2509,6 +2391,8 @@ async def open_cell_handler(call: CallbackQuery) -> None:
         user_balances[user_id] = get_user_balance(user_id) + win_amount
 
         user_active_game_msg.pop(user_id, None)
+
+        await log_bet_to_channel(call.bot, call.from_user, "Мины 💣", game_data["bet"], "Открыл все ячейки", win_amount)
 
         text = (
             f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы открыли все безопасные ячейки!\n'
@@ -2547,6 +2431,8 @@ async def cashout_mines_handler(call: CallbackQuery) -> None:
     game_data["game_over"] = True
 
     user_active_game_msg.pop(user_id, None)
+
+    await log_bet_to_channel(call.bot, call.from_user, "Мины 💣", game_data["bet"], "Забрал выигрыш", win_amount)
 
     text = (
         f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы забрали выигрыш!\n'
@@ -2840,6 +2726,8 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
 
         user_active_game_msg.pop(user_id, None)
 
+        await log_bet_to_channel(call.bot, call.from_user, "Башня 🏰", game_data["bet"], "Попал в ловушку", 0.0)
+
         text = (
             f'<b><tg-emoji emoji-id="5452018153963948977">💥</tg-emoji> Вы попали в ловушку!\n'
             f'Проигрыш: {game_data["bet"]:.2f} $</b>'
@@ -2863,6 +2751,8 @@ async def open_tower_cell_handler(call: CallbackQuery) -> None:
         user_balances[user_id] = get_user_balance(user_id) + win_amount
 
         user_active_game_msg.pop(user_id, None)
+
+        await log_bet_to_channel(call.bot, call.from_user, "Башня 🏰", game_data["bet"], "Прошел всю Башню", win_amount)
 
         text = (
             f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы прошли всю Башню!\n'
@@ -2904,6 +2794,8 @@ async def cashout_tower_handler(call: CallbackQuery) -> None:
 
     user_active_game_msg.pop(user_id, None)
 
+    await log_bet_to_channel(call.bot, call.from_user, "Башня 🏰", game_data["bet"], "Забрал выигрыш", win_amount)
+
     text = (
         f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы забрали выигрыш!\n'
         f"Сумма: {win_amount:.2f} $</b>"
@@ -2926,8 +2818,8 @@ async def basketball_choose_bet_handler(
 
     await state.set_state(BasketballState.waiting_for_custom_bet)
     text = (
-        '<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Выберите баланс для Баскетбол:\n'
-        "Или напишите сумму баланс в чат</b>"
+        '<b><tg-emoji emoji-id="5451754391432366821">💰</tg-emoji> Выберите ставку для Баскетбола:\n'
+        "Или напишите сумму ставки в чат</b>"
     )
     await safe_edit_message(
         call, text, get_basketball_bet_selection_keyboard(owner_id)
@@ -2950,16 +2842,14 @@ async def select_basketball_bet_quick(
     st["bet"] = bet
 
     text = (
-        f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол\n'
-        f'Баланс: {bet:.2f} $\n\n'
-        f'Выберите исход:</b>'
+        f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол</b>\n'
+        f'<b>Ставка: {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n\n'
+        f'<b>Выберите исход:</b>'
     )
     await safe_edit_message(call, text, get_basketball_type_keyboard(bet, owner_id))
 
 @dp.message(BasketballState.waiting_for_custom_bet)
-async def process_basketball_custom_bet(
-    message: Message, state: FSMContext
-) -> None:
+async def process_basketball_custom_bet(message: Message, state: FSMContext) -> None:
     user_id = message.from_user.id if message.from_user else 0
     try:
         raw_text = message.text.replace("$", "").replace(",", ".").strip()
@@ -2972,9 +2862,9 @@ async def process_basketball_custom_bet(
         await state.clear()
 
         text = (
-            f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол\n'
-            f'Баланс: {bet:.2f} $\n\n'
-            f'Выберите исход:</b>'
+            f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол</b>\n'
+            f'<b>Ставка: {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n\n'
+            f'<b>Выберите исход:</b>'
         )
         await message.answer(
             text=text,
@@ -2989,20 +2879,17 @@ async def process_basketball_custom_bet(
 @dp.callback_query(F.data.startswith("basketball_bet_"))
 async def basketball_bet_process(call: CallbackQuery) -> None:
     parts = call.data.split(":")
-    main_part = parts[0]
     owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-
     if not check_owner(call, owner_id):
         await call.answer("Это не ваша игра!", show_alert=True)
         return
 
-    sub_parts = main_part.split("_")
-    bet_type = sub_parts[2]
-    bet = float(sub_parts[3])
-
     user_id = call.from_user.id
-    balance = get_user_balance(user_id)
+    bet_data = parts[0].split("_")
+    bet_type = bet_data[2]
+    bet = float(bet_data[3])
 
+    balance = get_user_balance(user_id)
     if balance < bet:
         await call.answer("❌ Недостаточно средств на балансе!", show_alert=True)
         return
@@ -3011,29 +2898,30 @@ async def basketball_bet_process(call: CallbackQuery) -> None:
     user_turnover[user_id] = get_user_turnover(user_id) + bet
 
     msg = await call.message.answer_dice(emoji="🏀")
-    val = msg.dice.value
+    basketball_val = msg.dice.value
 
-    res = calculate_basketball_result(val, bet_type)
+    result = calculate_basketball_result(basketball_val, bet_type)
+    bet_name = get_basketball_bet_type_name(bet_type)
 
-    await asyncio.sleep(2.5)
+    await asyncio.sleep(3.5)
 
-    if res['win']:
-        win_amount = round(bet * res['multiplier'], 2)
+    if result['win']:
+        win_amount = round(bet * result['multiplier'], 2)
         user_balances[user_id] = get_user_balance(user_id) + win_amount
-        text = (
-            f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Поздравляем! Вы выиграли!\n'
-            f'Исход: {get_basketball_bet_type_name(bet_type)}\n'
-            f'Выигрыш: {win_amount:.2f} $ (x{res["multiplier"]})</b>'
+        await log_bet_to_channel(call.bot, call.from_user, "Баскетбол 🏀", bet, bet_name, win_amount)
+        res_text = (
+            f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы выиграли {win_amount:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>!</b>\n'
+            f'<b>Исход: {bet_name} (x{result["multiplier"]})</b>'
         )
     else:
-        text = (
-            f'<b><tg-emoji emoji-id="5452018153963948977">💥</tg-emoji> Вы проиграли!\n'
-            f'Исход: {get_basketball_bet_type_name(bet_type)}\n'
-            f'Проигрыш: {bet:.2f} $</b>'
+        await log_bet_to_channel(call.bot, call.from_user, "Баскетбол 🏀", bet, bet_name, 0.0)
+        res_text = (
+            f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Вы проиграли {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>!</b>\n'
+            f'<b>Исход: {bet_name}</b>'
         )
 
     await call.message.answer(
-        text=text,
+        text=res_text,
         parse_mode="HTML",
         reply_markup=get_basketball_result_keyboard(bet, owner_id)
     )
@@ -3041,18 +2929,16 @@ async def basketball_bet_process(call: CallbackQuery) -> None:
 @dp.callback_query(F.data.startswith("basketball_repeat_"))
 async def basketball_repeat_handler(call: CallbackQuery) -> None:
     parts = call.data.split(":")
-    main_part = parts[0]
     owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-
     if not check_owner(call, owner_id):
         await call.answer("Это не ваша игра!", show_alert=True)
         return
 
-    bet = float(main_part.split("_")[2])
+    bet = float(parts[0].split("_")[2])
     text = (
-        f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол\n'
-        f'Баланс: {bet:.2f} $\n\n'
-        f'Выберите исход:</b>'
+        f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол</b>\n'
+        f'<b>Ставка: {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n\n'
+        f'<b>Выберите исход:</b>'
     )
     await safe_edit_message(call, text, get_basketball_type_keyboard(bet, owner_id))
 
@@ -3069,8 +2955,8 @@ async def football_choose_bet_handler(
 
     await state.set_state(FootballState.waiting_for_custom_bet)
     text = (
-        '<b><tg-emoji emoji-id="5319298377412812014">⚽</tg-emoji> Выберите баланс для Футбол:\n'
-        "Или напишите сумму баланс в чат</b>"
+        '<b><tg-emoji emoji-id="5451754391432366821">💰</tg-emoji> Выберите ставку для Футбола:\n'
+        "Или напишите сумму ставки в чат</b>"
     )
     await safe_edit_message(
         call, text, get_football_bet_selection_keyboard(owner_id)
@@ -3093,16 +2979,14 @@ async def select_football_bet_quick(
     st["bet"] = bet
 
     text = (
-        f'<b><tg-emoji emoji-id="5319298377412812014">⚽</tg-emoji> Футбол\n'
-        f'Баланс: {bet:.2f} $\n\n'
-        f'Выберите исход:</b>'
+        f'<b><tg-emoji emoji-id="5319298377412812014">⚽</tg-emoji> Футбол</b>\n'
+        f'<b>Ставка: {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n\n'
+        f'<b>Выберите исход:</b>'
     )
     await safe_edit_message(call, text, get_football_type_keyboard(bet, owner_id))
 
 @dp.message(FootballState.waiting_for_custom_bet)
-async def process_football_custom_bet(
-    message: Message, state: FSMContext
-) -> None:
+async def process_football_custom_bet(message: Message, state: FSMContext) -> None:
     user_id = message.from_user.id if message.from_user else 0
     try:
         raw_text = message.text.replace("$", "").replace(",", ".").strip()
@@ -3115,9 +2999,9 @@ async def process_football_custom_bet(
         await state.clear()
 
         text = (
-            f'<b><tg-emoji emoji-id="5319298377412812014">⚽</tg-emoji> Футбол\n'
-            f'Баланс: {bet:.2f} $\n\n'
-            f'Выберите исход:</b>'
+            f'<b><tg-emoji emoji-id="5319298377412812014">⚽</tg-emoji> Футбол</b>\n'
+            f'<b>Ставка: {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n\n'
+            f'<b>Выберите исход:</b>'
         )
         await message.answer(
             text=text,
@@ -3132,20 +3016,17 @@ async def process_football_custom_bet(
 @dp.callback_query(F.data.startswith("football_bet_"))
 async def football_bet_process(call: CallbackQuery) -> None:
     parts = call.data.split(":")
-    main_part = parts[0]
     owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-
     if not check_owner(call, owner_id):
         await call.answer("Это не ваша игра!", show_alert=True)
         return
 
-    sub_parts = main_part.split("_")
-    bet_type = sub_parts[2]
-    bet = float(sub_parts[3])
-
     user_id = call.from_user.id
-    balance = get_user_balance(user_id)
+    bet_data = parts[0].split("_")
+    bet_type = bet_data[2]
+    bet = float(bet_data[3])
 
+    balance = get_user_balance(user_id)
     if balance < bet:
         await call.answer("❌ Недостаточно средств на балансе!", show_alert=True)
         return
@@ -3154,29 +3035,30 @@ async def football_bet_process(call: CallbackQuery) -> None:
     user_turnover[user_id] = get_user_turnover(user_id) + bet
 
     msg = await call.message.answer_dice(emoji="⚽")
-    val = msg.dice.value
+    football_val = msg.dice.value
 
-    res = calculate_football_result(val, bet_type)
+    result = calculate_football_result(football_val, bet_type)
+    bet_name = get_football_bet_type_name(bet_type)
 
-    await asyncio.sleep(2.5)
+    await asyncio.sleep(3.5)
 
-    if res['win']:
-        win_amount = round(bet * res['multiplier'], 2)
+    if result['win']:
+        win_amount = round(bet * result['multiplier'], 2)
         user_balances[user_id] = get_user_balance(user_id) + win_amount
-        text = (
-            f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Поздравляем! Вы выиграли!\n'
-            f'Исход: {get_football_bet_type_name(bet_type)}\n'
-            f'Выигрыш: {win_amount:.2f} $ (x{res["multiplier"]})</b>'
+        await log_bet_to_channel(call.bot, call.from_user, "Футбол ⚽", bet, bet_name, win_amount)
+        res_text = (
+            f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы выиграли {win_amount:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>!</b>\n'
+            f'<b>Исход: {bet_name} (x{result["multiplier"]})</b>'
         )
     else:
-        text = (
-            f'<b><tg-emoji emoji-id="5452018153963948977">💥</tg-emoji> Вы проиграли!\n'
-            f'Исход: {get_football_bet_type_name(bet_type)}\n'
-            f'Проигрыш: {bet:.2f} $</b>'
+        await log_bet_to_channel(call.bot, call.from_user, "Футбол ⚽", bet, bet_name, 0.0)
+        res_text = (
+            f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Вы проиграли {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji>!</b>\n'
+            f'<b>Исход: {bet_name}</b>'
         )
 
     await call.message.answer(
-        text=text,
+        text=res_text,
         parse_mode="HTML",
         reply_markup=get_football_result_keyboard(bet, owner_id)
     )
@@ -3184,18 +3066,16 @@ async def football_bet_process(call: CallbackQuery) -> None:
 @dp.callback_query(F.data.startswith("football_repeat_"))
 async def football_repeat_handler(call: CallbackQuery) -> None:
     parts = call.data.split(":")
-    main_part = parts[0]
     owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-
     if not check_owner(call, owner_id):
         await call.answer("Это не ваша игра!", show_alert=True)
         return
 
-    bet = float(main_part.split("_")[2])
+    bet = float(parts[0].split("_")[2])
     text = (
-        f'<b><tg-emoji emoji-id="5319298377412812014">⚽</tg-emoji> Футбол\n'
-        f'Баланс: {bet:.2f} $\n\n'
-        f'Выберите исход:</b>'
+        f'<b><tg-emoji emoji-id="5319298377412812014">⚽</tg-emoji> Футбол</b>\n'
+        f'<b>Ставка: {bet:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n\n'
+        f'<b>Выберите исход:</b>'
     )
     await safe_edit_message(call, text, get_football_type_keyboard(bet, owner_id))
 
@@ -3205,37 +3085,33 @@ async def return_to_active_game_handler(call: CallbackQuery) -> None:
     game_type = parts[1]
     game_id = parts[2]
 
-    if game_type == "mines":
-        if game_id in active_games:
-            game_data = active_games[game_id]
-            if not check_owner(call, game_data["owner_id"]):
-                await call.answer("Это не ваша игра!", show_alert=True)
-                return
-            text = (
-                f'<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Игра продолжается!\n'
-                f'Открыто: {len(game_data["opened"])} | Выигрыш: {game_data["current_win"]:.2f} $</b>'
-            )
-            await safe_edit_message(call, text, build_game_keyboard(game_data))
-        else:
-            await call.answer("Игра не найдена или уже завершена!", show_alert=True)
-    elif game_type == "tower":
-        if game_id in active_tower_games:
-            game_data = active_tower_games[game_id]
-            if not check_owner(call, game_data["owner_id"]):
-                await call.answer("Это не ваша игра!", show_alert=True)
-                return
-            text = (
-                f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Игра Башня продолжается!\n'
-                f'Этаж: {game_data["current_floor"]} | Выигрыш: {game_data["current_win"]:.2f} $</b>'
-            )
-            await safe_edit_message(call, text, build_tower_game_keyboard(game_data))
-        else:
-            await call.answer("Игра не найдена или уже завершена!", show_alert=True)
+    if game_type == "mines" and game_id in active_games:
+        game_data = active_games[game_id]
+        if not check_owner(call, game_data["owner_id"]):
+            await call.answer("Это не ваша игра!", show_alert=True)
+            return
+        text = (
+            f'<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Возврат к игре Мины!\n'
+            f"Ставка: {game_data['bet']:.2f} $ | Мин: {game_data['mines_count']}</b>"
+        )
+        await safe_edit_message(call, text, build_game_keyboard(game_data))
+    elif game_type == "tower" and game_id in active_tower_games:
+        game_data = active_tower_games[game_id]
+        if not check_owner(call, game_data["owner_id"]):
+            await call.answer("Это не ваша игра!", show_alert=True)
+            return
+        text = (
+            f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Возврат к игре Башня!\n'
+            f"Ставка: {game_data['bet']:.2f} $ | Ловушек: {game_data['traps_count']}</b>"
+        )
+        await safe_edit_message(call, text, build_tower_game_keyboard(game_data))
+    else:
+        await call.answer("Игра уже не активна!", show_alert=True)
 
 async def main():
+    logging.basicConfig(level=logging.INFO)
     bot = Bot(token=TOKEN)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
