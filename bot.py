@@ -1317,7 +1317,7 @@ def get_author_bet_selection_keyboard(owner_id: int) -> InlineKeyboardMarkup:
 
 def get_author_type_keyboard(bet: float, owner_id: int) -> InlineKeyboardMarkup:
     row1 = [
-        InlineKeyboardButton("🏴‍☠️ x2", callback_data=f"emoji:🏴‍☠️:{bet}:{owner_id}"),
+        InlineKeyboardButton(text="🏴‍☠️ x2", callback_data=f"emoji:🏴‍☠️:{bet}:{owner_id}"),
         InlineKeyboardButton("🧭 x3", callback_data=f"emoji:🧭:{bet}:{owner_id}"),
         InlineKeyboardButton("🐟 x4", callback_data=f"emoji:🐟:{bet}:{owner_id}"),
         InlineKeyboardButton("🎈 x5", callback_data=f"emoji:🎈:{bet}:{owner_id}"),
