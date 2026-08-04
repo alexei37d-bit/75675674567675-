@@ -481,7 +481,7 @@ main_keyboard = ReplyKeyboardMarkup(
                 text="Играть", icon_custom_emoji_id="5471895876790161593"
             ),
             KeyboardButton(
-                text="Меню", icon_custom_emoji_id="5278413853577734640"
+                text="Меню", icon_custom_emoji_id="4958624886663678191"
             ),
         ]
     ],
