@@ -459,7 +459,7 @@ def generate_check_code() -> str:
     return "chek_" + "".join(random.choices(chars, k=10))
 
 def get_user_balance(user_id: int) -> float:
-    return user_balances.setdefault(user_id, 1.00)
+    return user_balances.setdefault(user_id, 0.00)
 
 def get_user_turnover(user_id: int) -> float:
     return user_turnover.setdefault(user_id, 0.00)
@@ -1488,8 +1488,8 @@ async def withdraw_amount_process(message: Message, state: FSMContext) -> None:
     balance = get_user_balance(user_id)
     try:
         amount = float(message.text.replace("$", "").replace(",", ".").strip())
-        if amount < 0.10:
-            await message.answer('<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Минимальная сумма вывода 0.10 $:</b>', parse_mode="HTML")
+        if amount < 1.10:
+            await message.answer('<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Минимальная сумма вывода 1.10 $:</b>', parse_mode="HTML")
             return
         if amount > balance:
             await message.answer('<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Недостаточно средств на балансе!</b>', parse_mode="HTML")
