@@ -41,6 +41,7 @@ class AdminState(StatesGroup):
     waiting_for_sub_balance_user = State()
     waiting_for_sub_balance_amount = State()
     waiting_for_broadcast_text = State()
+    waiting_for_withdraw_check_url = State()
 
 async def check_subscription(bot: Bot, user_id: int) -> bool:
     try:
@@ -371,6 +372,9 @@ user_bets_counter = {}
 # Хранилище режима топа для пользователей: user_id -> "turnover" или "balance"
 top_modes = {}
 
+# Хранилище никнеймов игроков: user_id -> string
+user_names = {}
+
 # Настройки и состояние для баскетбола
 basketball_settings = {}
 basketball_coeffs = {
@@ -392,6 +396,9 @@ created_cheks = {}
 
 # Хранилище активных сообщений/игр пользователя
 user_active_game_msg = {}
+
+# Заявки на вывод: withdraw_id -> dict
+withdraw_requests = {}
 
 class MinesState(StatesGroup):
     waiting_for_custom_bet = State()
@@ -415,6 +422,9 @@ class ChekState(StatesGroup):
     waiting_for_target_user = State()
 
 class DepositState(StatesGroup):
+    waiting_for_amount = State()
+
+class WithdrawState(StatesGroup):
     waiting_for_amount = State()
 
 FIELD_SIZE = 25
@@ -601,18 +611,20 @@ games_keyboard = InlineKeyboardMarkup(
 )
 
 def get_top_keyboard(mode: str) -> InlineKeyboardMarkup:
-    turnover_text = "Оборот" + (" <tg-emoji emoji-id=\"5312019687746349814\">⭐</tg-emoji>" if mode == "turnover" else "")
-    balance_text = "Баланс" + (" <tg-emoji emoji-id=\"5312019687746349814\">⭐</tg-emoji>" if mode == "balance" else "")
+    turnover_emoji = "5312019687746349814" if mode == "turnover" else "5307942883314147223"
+    balance_emoji = "5312019687746349814" if mode == "balance" else "5197422813463483902"
     
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=turnover_text,
+                    text="Оборот",
+                    icon_custom_emoji_id=turnover_emoji,
                     callback_data="top_mode_turnover",
                 ),
                 InlineKeyboardButton(
-                    text=balance_text,
+                    text="Баланс",
+                    icon_custom_emoji_id=balance_emoji,
                     callback_data="top_mode_balance",
                 ),
             ],
@@ -628,7 +640,6 @@ def get_top_keyboard(mode: str) -> InlineKeyboardMarkup:
 def generate_top_text(user_id: int) -> str:
     mode = top_modes.get(user_id, "turnover")
     
-    # Сбор всех пользователей из балансов и оборотов
     all_users = set(user_balances.keys()).union(set(user_turnover.keys()))
     
     users_data = []
@@ -655,8 +666,7 @@ def generate_top_text(user_id: int) -> str:
             uid = udata["id"]
             val = udata["turnover"] if mode == "turnover" else udata["balance"]
             
-            # Имя пользователя или ID, если имя недоступно
-            nickname = f"Игрок {uid}"
+            nickname = user_names.get(uid, "Игрок")
             
             prem_emoji = '<tg-emoji emoji-id="5449789954995559460">💎</tg-emoji>'
             dollar_emoji = '<tg-emoji emoji-id="5197422813463483902">💵</tg-emoji>'
@@ -1457,16 +1467,166 @@ async def check_pay_handler(call: CallbackQuery) -> None:
     else:
         await call.answer("❌ Счет еще не оплачен!", show_alert=True)
 
+# --- ЛОГИКА ВЫВОДА СРЕДСТВ С ПОДТВЕРЖДЕНИЕМ АДМИНИСТРАТОРА ---
 @dp.callback_query(F.data == "withdraw")
-async def withdraw_handler(call: CallbackQuery) -> None:
-    await call.answer("Для вывода средств обратитесь к администратору.", show_alert=True)
+async def withdraw_handler(call: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(WithdrawState.waiting_for_amount)
+    text = (
+        '<b><tg-emoji emoji-id="5255868234506213301">📤</tg-emoji> Вывод средств</b>\n\n'
+        '<b>Введите сумму для вывода в USDT (минимум 0.10 $):</b>'
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="◀ Назад", callback_data="open_wallet_inline")]
+        ]
+    )
+    await safe_edit_message(call, text, kb)
+
+@dp.message(WithdrawState.waiting_for_amount)
+async def withdraw_amount_process(message: Message, state: FSMContext) -> None:
+    user_id = message.from_user.id
+    balance = get_user_balance(user_id)
+    try:
+        amount = float(message.text.replace("$", "").replace(",", ".").strip())
+        if amount < 0.10:
+            await message.answer('<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Минимальная сумма вывода 0.10 $:</b>', parse_mode="HTML")
+            return
+        if amount > balance:
+            await message.answer('<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Недостаточно средств на балансе!</b>', parse_mode="HTML")
+            return
+    except ValueError:
+        await message.answer('<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Введите корректное число:</b>', parse_mode="HTML")
+        return
+
+    await state.clear()
+    user_balances[user_id] -= amount
+
+    withdraw_id = "w_" + "".join(random.choices(string.digits, k=6))
+    withdraw_requests[withdraw_id] = {
+        "user_id": user_id,
+        "amount": amount,
+        "user_name": message.from_user.full_name
+    }
+
+    await message.answer(
+        f'<b><tg-emoji emoji-id="5451845260055450038">⏳</tg-emoji> Ваша заявка на вывод {amount:.2f} $ успешно отправлена администратору на обработку!</b>',
+        parse_mode="HTML"
+    )
+
+    admin_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Одобрить", callback_data=f"admin_approve_withdraw:{withdraw_id}"),
+                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin_reject_withdraw:{withdraw_id}")
+            ]
+        ]
+    )
+
+    user_link = f'<a href="tg://user?id={user_id}">{html.quote(message.from_user.full_name)}</a>'
+    admin_text = (
+        f'<b><tg-emoji emoji-id="5255868234506213301">📤</tg-emoji> Новая заявка на вывод!</b>\n\n'
+        f'<b>Игрок:</b> {user_link} (<code>{user_id}</code>)\n'
+        f'<b>Сумма:</b> <code>{amount:.2f} $</code>'
+    )
+
+    for admin_id in ADMIN_IDS:
+        try:
+            await message.bot.send_message(admin_id, admin_text, parse_mode="HTML", reply_markup=admin_kb)
+        except Exception:
+            pass
+
+@dp.callback_query(F.data.startswith("admin_approve_withdraw:"))
+async def admin_approve_withdraw_start(call: CallbackQuery, state: FSMContext) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+
+    withdraw_id = call.data.split(":")[1]
+    req = withdraw_requests.get(withdraw_id)
+    if not req:
+        await call.answer("Заявка не найдена или уже обработана!", show_alert=True)
+        return
+
+    await state.update_data(target_withdraw_id=withdraw_id)
+    await state.set_state(AdminState.waiting_for_withdraw_check_url)
+    await call.message.edit_text(
+        f'<b><tg-emoji emoji-id="5197422813463483902">💵</tg-emoji> Введите ссылку на чек (или отправьте сам чек) для игрока <code>{req["user_id"]}</code> (Сумма: {req["amount"]:.2f} $):</b>',
+        parse_mode="HTML"
+    )
+
+@dp.message(AdminState.waiting_for_withdraw_check_url)
+async def admin_approve_withdraw_process(message: Message, state: FSMContext) -> None:
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    data = await state.get_data()
+    withdraw_id = data.get("target_withdraw_id")
+    req = withdraw_requests.get(withdraw_id)
+
+    if not req:
+        await message.answer("Ошибка: заявка не найдена!", parse_mode="HTML")
+        await state.clear()
+        return
+
+    check_url = message.text.strip()
+    user_id = req["user_id"]
+    amount = req["amount"]
+
+    await state.clear()
+
+    user_text = (
+        f'<b><tg-emoji emoji-id="5452168761287152584">✅</tg-emoji> Ваша заявка на вывод одобрена!\n\n'
+        f'Ваш чек : <a href="{check_url}">{check_url}</a></b>'
+    )
+    try:
+        await message.bot.send_message(user_id, user_text, parse_mode="HTML", disable_web_page_preview=True)
+    except Exception as e:
+        logger.error(f"Failed to send withdraw notification to user: {e}")
+
+    await message.answer(
+        f'<b><tg-emoji emoji-id="5452168761287152584">✅</tg-emoji> Вывод на {amount:.2f} $ пользователю <code>{user_id}</code> успешно подтвержден и отправлен!</b>',
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard()
+    )
+    del withdraw_requests[withdraw_id]
+
+@dp.callback_query(F.data.startswith("admin_reject_withdraw:"))
+async def admin_reject_withdraw_handler(call: CallbackQuery) -> None:
+    if call.from_user.id not in ADMIN_IDS:
+        return
+
+    withdraw_id = call.data.split(":")[1]
+    req = withdraw_requests.get(withdraw_id)
+    if not req:
+        await call.answer("Заявка не найдена или уже обработана!", show_alert=True)
+        return
+
+    user_id = req["user_id"]
+    amount = req["amount"]
+
+    user_balances[user_id] = get_user_balance(user_id) + amount
+
+    try:
+        await call.bot.send_message(
+            user_id,
+            f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Ваша заявка на вывод {amount:.2f} $ была отклонена администратором. Средства возвращены на баланс.</b>',
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+    await safe_edit_message(
+        call,
+        f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Заявка на вывод от <code>{user_id}</code> отклонена. Средства возвращены на счет.</b>',
+        get_admin_keyboard()
+    )
+    del withdraw_requests[withdraw_id]
 
 # --- РАЗДЕЛ ЧЕКИ ---
 @dp.callback_query(F.data == "open_cheks_menu")
 async def open_cheks_menu_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     text = (
-        '<b><tg-emoji emoji-id=\"5307773751796996779\">🎟</tg-emoji></b>'
+        '<b><tg-emoji emoji-id=\"5307773751796996779\">🎟</tg-emoji> </b>'
         '<b>Создайте чек для мгновенной отправки средств пользователю или группе пользователей - </b>'
         '<b>просто укажите количество активаций!</b>'
     )
@@ -2074,6 +2234,9 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
     user_id = user.id if user else 0
     user_name = user.first_name if user else "Игрок"
 
+    if user:
+        user_names[user_id] = user.full_name
+
     get_user_balance(user_id)
     get_user_turnover(user_id)
 
@@ -2469,61 +2632,66 @@ async def open_cell_handler(call: CallbackQuery) -> None:
 
     user_id = game_data["owner_id"]
 
-    if game_data["safe_moves"] < random.choice([1, 2]):
-        if idx in game_data["mines_positions"]:
-            game_data["mines_positions"].remove(idx)
-            safe_cells = set(range(FIELD_SIZE)) - game_data["mines_positions"] - game_data["opened"] - {idx}
-            if safe_cells:
-                game_data["mines_positions"].add(random.choice(list(safe_cells)))
-            else:
+    if game_data["rigged"]:
+        if game_data["safe_moves"] == 0:
+            if idx in game_data["mines_positions"]:
+                game_data["mines_positions"].remove(idx)
+                unopened_safe = [
+                    i for i in range(FIELD_SIZE)
+                    if i not in game_data["opened"] and i != idx and i not in game_data["mines_positions"]
+                ]
+                if unopened_safe:
+                    game_data["mines_positions"].add(random.choice(unopened_safe))
+            game_data["safe_moves"] += 1
+        else:
+            if idx not in game_data["mines_positions"]:
+                game_data["mines_positions"].discard(idx)
                 game_data["mines_positions"].add(idx)
-        game_data["safe_moves"] += 1
-    elif game_data["rigged"]:
-        game_data["mines_positions"].add(idx)
 
     if idx in game_data["mines_positions"]:
         game_data["game_over"] = True
         game_data["opened"].add(idx)
 
+        await log_bet_to_channel(
+            call.bot, call.from_user, "Мины 💣", game_data["bet"], "Проиграл", 0.0
+        )
+
         user_active_game_msg.pop(user_id, None)
 
-        await log_bet_to_channel(call.bot, call.from_user, "Мины 💣", game_data["bet"], "Подорвался на мине", 0.0)
-
         text = (
-            f'<b><tg-emoji emoji-id="5452018153963948977">💥</tg-emoji> Вы подорвались на мине!\n'
+            f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Вы попали на мину!\n'
             f'Проигрыш: {game_data["bet"]:.2f} $</b>'
         )
         await safe_edit_message(call, text, build_game_keyboard(game_data, finished=True))
-        del active_games[game_id]
-        return
+    else:
+        game_data["opened"].add(idx)
+        opened_cnt = len(game_data["opened"])
+        mult = calculate_multiplier(game_data["mines_count"], opened_cnt)
+        game_data["current_win"] = round(game_data["bet"] * mult, 2)
 
-    game_data["opened"].add(idx)
-    opened_count = len(game_data["opened"])
-    mult = calculate_multiplier(game_data["mines_count"], opened_count)
-    game_data["current_win"] = round(game_data["bet"] * mult, 2)
+        if opened_cnt == FIELD_SIZE - game_data["mines_count"]:
+            game_data["game_over"] = True
+            win_amount = game_data["current_win"]
+            user_balances[user_id] = get_user_balance(user_id) + win_amount
 
-    if opened_count == (FIELD_SIZE - game_data["mines_count"]):
-        game_data["game_over"] = True
-        win_amount = game_data["current_win"]
-        user_balances[user_id] = get_user_balance(user_id) + win_amount
+            await log_bet_to_channel(
+                call.bot, call.from_user, "Мины 💣", game_data["bet"], f"Выиграл (x{mult:.2f})", win_amount
+            )
 
-        user_active_game_msg.pop(user_id, None)
+            user_active_game_msg.pop(user_id, None)
 
-        await log_bet_to_channel(call.bot, call.from_user, "Мины 💣", game_data["bet"], "Открыл все ячейки", win_amount)
-
-        text = (
-            f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы открыли все безопасные ячейки!\n'
-            f"Выиграш: {win_amount:.2f} $</b>"
-        )
-        await safe_edit_message(call, text, build_game_keyboard(game_data, finished=True))
-        del active_games[game_id]
-        return
-
-    text = (
-        f'<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Игра продолжается!\n'
-        f'Открыто: {opened_count} | Выигрыш: {game_data["current_win"]:.2f} $ (x{mult})</b>'
-    )
-    await safe_edit_message(call, text, build_game_keyboard(game_data))
+            text = (
+                f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы открыли все безопасные ячейки!\n'
+                f"Выигрыш: {win_amount:.2f} $ (x{mult:.2f})</b>"
+            )
+            await safe_edit_message(call, text, build_game_keyboard(game_data, finished=True))
+        else:
+            text = (
+                f'<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Игра продолжается!\n'
+                f'Мин: {game_data["mines_count"]} | Множитель: x{mult:.2f}\n'
+                f'Текущий выигрыш: {game_data["current_win"]:.2f} $</b>'
+            )
+            await safe_edit_message(call, text, build_game_keyboard(game_data))
 
 @dp.callback_query(F.data.startswith("cashout_mines:"))
 async def cashout_mines_handler(call: CallbackQuery) -> None:
@@ -2542,687 +2710,26 @@ async def cashout_mines_handler(call: CallbackQuery) -> None:
         await call.answer()
         return
 
-    user_id = game_data["owner_id"]
-    win_amount = game_data["current_win"]
-    user_balances[user_id] = get_user_balance(user_id) + win_amount
     game_data["game_over"] = True
+    win_amount = game_data["current_win"]
+    user_id = game_data["owner_id"]
+
+    user_balances[user_id] = get_user_balance(user_id) + win_amount
+
+    mult = calculate_multiplier(game_data["mines_count"], len(game_data["opened"]))
+    await log_bet_to_channel(
+        call.bot, call.from_user, "Мины 💣", game_data["bet"], f"Забрал (x{mult:.2f})", win_amount
+    )
 
     user_active_game_msg.pop(user_id, None)
-
-    await log_bet_to_channel(call.bot, call.from_user, "Мины 💣", game_data["bet"], "Забрал выигрыш", win_amount)
 
     text = (
         f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы забрали выигрыш!\n'
-        f"Сумма: {win_amount:.2f} $</b>"
+        f"Выигрыш: {win_amount:.2f} $</b>"
     )
     await safe_edit_message(call, text, build_game_keyboard(game_data, finished=True))
-    del active_games[game_id]
-
-# --- ЛОГИКА ИГРЫ «БАШНЯ» ---
-@dp.callback_query(F.data.startswith("tower_choose_bet"))
-async def tower_choose_bet_handler(
-    call: CallbackQuery, state: FSMContext
-) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    await state.set_state(TowerState.waiting_for_custom_bet)
-    text = (
-        '<b><tg-emoji emoji-id="5451754391432366821">💰</tg-emoji> Выберите ставку для Башни:\n'
-        "Или напишите сумму ставки в чат</b>"
-    )
-    await safe_edit_message(
-        call, text, get_tower_bet_selection_keyboard(owner_id)
-    )
-
-@dp.callback_query(F.data.startswith("select_tower_bet_"))
-async def select_tower_bet_quick(
-    call: CallbackQuery, state: FSMContext
-) -> None:
-    data_parts = call.data.split(":")
-    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    await state.clear()
-    user_id = call.from_user.id
-    bet = float(data_parts[0].split("_")[3])
-    st = get_tower_settings(user_id)
-    st["bet"] = bet
-
-    await screen_tower_game_confirm(call)
-
-@dp.message(TowerState.waiting_for_custom_bet)
-async def process_tower_custom_bet(message: Message, state: FSMContext) -> None:
-    user_id = message.from_user.id if message.from_user else 0
-    try:
-        raw_text = message.text.replace("$", "").replace(",", ".").strip()
-        bet = float(raw_text)
-        if bet < 0.1:
-            raise ValueError
-
-        st = get_tower_settings(user_id)
-        st["bet"] = bet
-        await state.clear()
-
-        balance = get_user_balance(user_id)
-        text = (
-            f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня</b>\n'
-            f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
-            f'<b>Выбрано - {st["traps"]} <tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> (ловушек на этаж)</b>'
-        )
-        await message.answer(
-            text=text,
-            parse_mode="HTML",
-            reply_markup=get_preview_tower_keyboard(user_id, owner_id=user_id),
-        )
-    except ValueError:
-        await message.answer(
-            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Введите корректную сумму от 0.1 (например: 0.1 или 1):</b>',
-            parse_mode="HTML"
-        )
-
-@dp.callback_query(F.data.startswith("screen_tower_game_confirm"))
-async def screen_tower_game_confirm(
-    call: CallbackQuery, state: FSMContext = None
-) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    if state:
-        await state.clear()
-    user_id = call.from_user.id
-    st = get_tower_settings(user_id)
-    balance = get_user_balance(user_id)
-
-    text = (
-        f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня</b>\n'
-        f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
-        f'<b>Выбрано - {st["traps"]} <tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> (ловушек на этаж)</b>'
-    )
-    await safe_edit_message(
-        call, text, get_preview_tower_keyboard(user_id, owner_id=owner_id)
-    )
-
-@dp.callback_query(F.data.startswith("screen_choose_tower_traps"))
-async def screen_choose_tower_traps(
-    call: CallbackQuery, state: FSMContext
-) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    await state.set_state(TowerState.waiting_for_custom_traps)
-    text = (
-        '<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Выберите количество ловушек на каждый этаж (от 1 до 4):\n'
-        "Или напишите количество ловушек числом в чат</b>"
-    )
-    await safe_edit_message(
-        call, text, get_tower_traps_count_keyboard(owner_id)
-    )
-
-@dp.callback_query(F.data.startswith("set_tower_traps_cnt_"))
-async def set_tower_traps_count(
-    call: CallbackQuery, state: FSMContext
-) -> None:
-    data_parts = call.data.split(":")
-    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    await state.clear()
-    user_id = call.from_user.id
-    cnt = int(data_parts[0].split("_")[4])
-    st = get_tower_settings(user_id)
-    st["traps"] = cnt
-
-    await screen_tower_game_confirm(call)
-
-@dp.message(TowerState.waiting_for_custom_traps)
-async def process_tower_custom_traps(
-    message: Message, state: FSMContext
-) -> None:
-    user_id = message.from_user.id if message.from_user else 0
-    try:
-        cnt = int(message.text.strip())
-        if not (1 <= cnt <= 4):
-            raise ValueError
-
-        st = get_tower_settings(user_id)
-        st["traps"] = cnt
-        await state.clear()
-
-        balance = get_user_balance(user_id)
-        text = (
-            f'<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня</b>\n'
-            f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji></b>\n'
-            f'<b>Выбрано - {st["traps"]} <tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> (ловушек на этаж)</b>'
-        )
-        await message.answer(
-            text=text,
-            parse_mode="HTML",
-            reply_markup=get_preview_tower_keyboard(user_id, owner_id=user_id),
-        )
-    except ValueError:
-        await message.answer(
-            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Пожалуйста, введите целое число от 1 до 4:</b>',
-            parse_mode="HTML"
-        )
-
-@dp.callback_query(F.data.startswith("start_tower_game"))
-async def start_tower_game(call: CallbackQuery) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    user_id = call.from_user.id
-
-    if user_id in user_active_game_msg:
-        active_info = user_active_game_msg[user_id]
-        prev_game_id = f"{active_info['chat_id']}_{active_info['message_id']}"
-        exists_in_mines = prev_game_id in active_games
-        exists_in_tower = prev_game_id in active_tower_games
-
-        if exists_in_mines or exists_in_tower:
-            existing_game_type = active_info["game_type"]
-            game_name_ru = "Мины" if existing_game_type == "mines" else "Башня"
-            
-            kb = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text=f"🎮 Вернуться к игре ({game_name_ru})",
-                            callback_data=f"return_to_active_game:{existing_game_type}:{prev_game_id}"
-                        )
-                    ]
-                ]
-            )
-            
-            try:
-                await call.message.edit_text(
-                    '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> У вас уже есть незаконченная игра</b>',
-                    parse_mode="HTML",
-                    reply_markup=kb
-                )
-            except TelegramBadRequest:
-                pass
-            return
-        else:
-            user_active_game_msg.pop(user_id, None)
-
-    balance = get_user_balance(user_id)
-    st = get_tower_settings(user_id)
-    bet = st["bet"]
-    traps_count = st["traps"]
-
-    if balance < bet:
-        await call.answer(
-            "❌ Недостаточно средств на балансе!", show_alert=True
-        )
-        return
-
-    user_balances[user_id] -= bet
-    user_turnover[user_id] = get_user_turnover(user_id) + bet
-    user_bets_counter[user_id] = user_bets_counter.get(user_id, 0) + 1
-
-    trap_positions = {}
-    for floor_idx in range(TOWER_FLOORS):
-        trap_positions[floor_idx] = set(random.sample(range(5), traps_count))
-
-    game_id = f"{call.message.chat.id}_{call.message.message_id}"
-
-    active_tower_games[game_id] = {
-        "game_id": game_id,
-        "owner_id": user_id,
-        "bet": bet,
-        "traps_count": traps_count,
-        "trap_positions": trap_positions,
-        "current_floor": 0,
-        "history": {},
-        "game_over": False,
-        "current_win": 0.00,
-    }
-
-    user_active_game_msg[user_id] = {
-        "chat_id": call.message.chat.id,
-        "message_id": call.message.message_id,
-        "game_type": "tower",
-    }
-
-    text = (
-        '<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Башня поднята!\n'
-        f"Ставка: {bet:.2f} $ | Ловушек на этаж: {traps_count}</b>"
-    )
-    await safe_edit_message(call, text, build_tower_game_keyboard(active_tower_games[game_id]))
-
-@dp.callback_query(F.data.startswith("open_tower_"))
-async def open_tower_cell_handler(call: CallbackQuery) -> None:
-    data_parts = call.data.split(":")
-    prefix_parts = data_parts[0].split("_")
-    floor_idx = int(prefix_parts[2])
-    col_idx = int(prefix_parts[3])
-    game_id = data_parts[1]
-
-    if game_id not in active_tower_games:
-        await call.answer("Игра завершена или не найдена!", show_alert=True)
-        return
-
-    game_data = active_tower_games[game_id]
-    if not check_owner(call, game_data["owner_id"]):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    if game_data["game_over"] or floor_idx != game_data["current_floor"]:
-        await call.answer()
-        return
-
-    user_id = game_data["owner_id"]
-    trap_positions = game_data["trap_positions"]
-
-    if col_idx in trap_positions[floor_idx]:
-        game_data["game_over"] = True
-        game_data["history"][floor_idx] = (col_idx, False)
-
-        user_active_game_msg.pop(user_id, None)
-
-        await log_bet_to_channel(call.bot, call.from_user, "Башня 🏰", game_data["bet"], f"Проиграл на этаже {floor_idx + 1}", 0.0)
-
-        text = (
-            '<b><tg-emoji emoji-id="5452018153963948977">💥</tg-emoji> Вы попались на ловушку!\n'
-            f'Проигрыш: {game_data["bet"]:.2f} $</b>'
-        )
-        await safe_edit_message(call, text, build_tower_game_keyboard(game_data, finished=True))
-        del active_tower_games[game_id]
-        return
-
-    game_data["history"][floor_idx] = (col_idx, True)
-    game_data["current_floor"] += 1
-    current_floor = game_data["current_floor"]
-
-    mult = calculate_tower_multiplier(game_data["traps_count"], current_floor)
-    game_data["current_win"] = round(game_data["bet"] * mult, 2)
-
-    if current_floor >= TOWER_FLOORS:
-        game_data["game_over"] = True
-        win_amount = game_data["current_win"]
-        user_balances[user_id] = get_user_balance(user_id) + win_amount
-
-        user_active_game_msg.pop(user_id, None)
-
-        await log_bet_to_channel(call.bot, call.from_user, "Башня 🏰", game_data["bet"], "Покорил вершину Башни", win_amount)
-
-        text = (
-            '<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы покорили вершину Башни!\n'
-            f"Выигрыш: {win_amount:.2f} $</b>"
-        )
-        await safe_edit_message(call, text, build_tower_game_keyboard(game_data, finished=True))
-        del active_tower_games[game_id]
-        return
-
-    text = (
-        '<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Этаж пройден!\n'
-        f'Текущий выигрыш: {game_data["current_win"]:.2f} $ (x{mult})</b>'
-    )
-    await safe_edit_message(call, text, build_tower_game_keyboard(game_data))
-
-@dp.callback_query(F.data.startswith("cashout_tower:"))
-async def cashout_tower_handler(call: CallbackQuery) -> None:
-    game_id = call.data.split(":")[1]
-
-    if game_id not in active_tower_games:
-        await call.answer("Игра завершена или не найдена!", show_alert=True)
-        return
-
-    game_data = active_tower_games[game_id]
-    if not check_owner(call, game_data["owner_id"]):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    if game_data["game_over"] or game_data["current_floor"] == 0:
-        await call.answer()
-        return
-
-    user_id = game_data["owner_id"]
-    win_amount = game_data["current_win"]
-    user_balances[user_id] = get_user_balance(user_id) + win_amount
-    game_data["game_over"] = True
-
-    user_active_game_msg.pop(user_id, None)
-
-    await log_bet_to_channel(call.bot, call.from_user, "Башня 🏰", game_data["bet"], "Забрал выигрыш", win_amount)
-
-    text = (
-        '<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Вы забрали выигрыш!\n'
-        f"Сумма: {win_amount:.2f} $</b>"
-    )
-    await safe_edit_message(call, text, build_tower_game_keyboard(game_data, finished=True))
-    del active_tower_games[game_id]
-
-@dp.callback_query(F.data.startswith("return_to_active_game:"))
-async def return_to_active_game_handler(call: CallbackQuery) -> None:
-    parts = call.data.split(":")
-    game_type = parts[1]
-    game_id = parts[2]
-
-    if game_type == "mines":
-        if game_id not in active_games:
-            await call.answer("Игра больше не активна!", show_alert=True)
-            return
-        game_data = active_games[game_id]
-        if not check_owner(call, game_data["owner_id"]):
-            await call.answer("Это не ваша игра!", show_alert=True)
-            return
-        text = '<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Ваша активная игра (Мины):</b>'
-        await safe_edit_message(call, text, build_game_keyboard(game_data))
-    elif game_type == "tower":
-        if game_id not in active_tower_games:
-            await call.answer("Игра больше не активна!", show_alert=True)
-            return
-        game_data = active_tower_games[game_id]
-        if not check_owner(call, game_data["owner_id"]):
-            await call.answer("Это не ваша игра!", show_alert=True)
-            return
-        text = '<b><tg-emoji emoji-id="5449397725697187601">🏰</tg-emoji> Ваша активная игра (Башня):</b>'
-        await safe_edit_message(call, text, build_tower_game_keyboard(game_data))
-
-# --- ХЕНДЛЕРЫ ДЛЯ БАСКЕТБОЛА ---
-@dp.callback_query(F.data.startswith("basketball_choose_bet"))
-async def basketball_choose_bet_handler(call: CallbackQuery, state: FSMContext) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    await state.set_state(BasketballState.waiting_for_custom_bet)
-    text = (
-        '<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Выберите ставку для баскетбола:\n'
-        "Или напишите сумму ставки в чат</b>"
-    )
-    await safe_edit_message(call, text, get_basketball_bet_selection_keyboard(owner_id))
-
-@dp.callback_query(F.data.startswith("select_basketball_bet_"))
-async def select_basketball_bet_quick(call: CallbackQuery, state: FSMContext) -> None:
-    data_parts = call.data.split(":")
-    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    await state.clear()
-    user_id = call.from_user.id
-    bet = float(data_parts[0].split("_")[3])
-    st = get_basketball_settings(user_id)
-    st["bet"] = bet
-
-    balance = get_user_balance(user_id)
-    text = (
-        f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол</b>\n'
-        f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji> | Ставка: {bet:.2f} $</b>\n\n'
-        '<b>Выберите исход броска:</b>'
-    )
-    await safe_edit_message(call, text, get_basketball_type_keyboard(bet, owner_id))
-
-@dp.message(BasketballState.waiting_for_custom_bet)
-async def process_basketball_custom_bet(message: Message, state: FSMContext) -> None:
-    user_id = message.from_user.id if message.from_user else 0
-    try:
-        raw_text = message.text.replace("$", "").replace(",", ".").strip()
-        bet = float(raw_text)
-        if bet < 0.1:
-            raise ValueError
-
-        st = get_basketball_settings(user_id)
-        st["bet"] = bet
-        await state.clear()
-
-        balance = get_user_balance(user_id)
-        text = (
-            f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол</b>\n'
-            f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji> | Ставка: {bet:.2f} $</b>\n\n'
-            '<b>Выберите исход броска:</b>'
-        )
-        await message.answer(
-            text=text,
-            parse_mode="HTML",
-            reply_markup=get_basketball_type_keyboard(bet, user_id),
-        )
-    except ValueError:
-        await message.answer(
-            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Введите корректную сумму от 0.1 (например: 0.1 или 1):</b>',
-            parse_mode="HTML"
-        )
-
-@dp.callback_query(F.data.startswith("basketball_bet_"))
-async def basketball_bet_process(call: CallbackQuery) -> None:
-    data_parts = call.data.split(":")
-    action_parts = data_parts[0].split("_")
-    bet_type = action_parts[2]
-    bet = float(action_parts[3])
-    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    user_id = call.from_user.id
-    balance = get_user_balance(user_id)
-
-    if balance < bet:
-        await call.answer("❌ Недостаточно средств на балансе!", show_alert=True)
-        return
-
-    user_balances[user_id] -= bet
-    user_turnover[user_id] = get_user_turnover(user_id) + bet
-
-    dice_msg = await call.message.answer_dice(emoji="🏀")
-    dice_val = dice_msg.dice.value
-
-    await asyncio.sleep(4)
-
-    res = calculate_basketball_result(dice_val, bet_type)
-    bet_type_name = get_basketball_bet_type_name(bet_type)
-
-    if res['win']:
-        win_amount = round(bet * res['multiplier'], 2)
-        user_balances[user_id] = get_user_balance(user_id) + win_amount
-        await log_bet_to_channel(call.bot, call.from_user, "Баскетбол 🏀", bet, f"Исход: {bet_type_name} (Угадал)", win_amount)
-
-        text = (
-            f'<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Мяч в кольце! Вы угадали исход ({bet_type_name})!\n'
-            f"Выигрыш: {win_amount:.2f} $ (x{res['multiplier']})</b>"
-        )
-    else:
-        await log_bet_to_channel(call.bot, call.from_user, "Баскетбол 🏀", bet, f"Исход: {bet_type_name} (Не угадал)", 0.0)
-
-        text = (
-            f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Вы не угадали исход броска ({bet_type_name}).\n'
-            f"Проигрыш: {bet:.2f} $</b>"
-        )
-
-    await call.message.answer(
-        text=text,
-        parse_mode="HTML",
-        reply_markup=get_basketball_result_keyboard(bet, owner_id)
-    )
-
-@dp.callback_query(F.data.startswith("basketball_repeat_"))
-async def basketball_repeat_handler(call: CallbackQuery) -> None:
-    data_parts = call.data.split(":")
-    action_parts = data_parts[0].split("_")
-    bet = float(action_parts[2])
-    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    user_id = call.from_user.id
-    balance = get_user_balance(user_id)
-    text = (
-        f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол</b>\n'
-        f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji> | Ставка: {bet:.2f} $</b>\n\n'
-        '<b>Выберите исход броска:</b>'
-    )
-    await safe_edit_message(call, text, get_basketball_type_keyboard(bet, owner_id))
-
-# --- ХЕНДЛЕРЫ ДЛЯ ФУТБОЛА ---
-@dp.callback_query(F.data.startswith("football_choose_bet"))
-async def football_choose_bet_handler(call: CallbackQuery, state: FSMContext) -> None:
-    parts = call.data.split(":")
-    owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    await state.set_state(FootballState.waiting_for_custom_bet)
-    text = (
-        '<b><tg-emoji emoji-id="5319298377412812014">⚽️</tg-emoji> Выберите ставку для футбола:\n'
-        "Или напишите сумму ставки в чат</b>"
-    )
-    await safe_edit_message(call, text, get_football_bet_selection_keyboard(owner_id))
-
-@dp.callback_query(F.data.startswith("select_football_bet_"))
-async def select_football_bet_quick(call: CallbackQuery, state: FSMContext) -> None:
-    data_parts = call.data.split(":")
-    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    await state.clear()
-    user_id = call.from_user.id
-    bet = float(data_parts[0].split("_")[3])
-    st = get_football_settings(user_id)
-    st["bet"] = bet
-
-    balance = get_user_balance(user_id)
-    text = (
-        f'<b><tg-emoji emoji-id="5319298377412812014">⚽️</tg-emoji> Футбол</b>\n'
-        f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji> | Ставка: {bet:.2f} $</b>\n\n'
-        '<b>Выберите исход удара:</b>'
-    )
-    await safe_edit_message(call, text, get_football_type_keyboard(bet, owner_id))
-
-@dp.message(FootballState.waiting_for_custom_bet)
-async def process_football_custom_bet(message: Message, state: FSMContext) -> None:
-    user_id = message.from_user.id if message.from_user else 0
-    try:
-        raw_text = message.text.replace("$", "").replace(",", ".").strip()
-        bet = float(raw_text)
-        if bet < 0.1:
-            raise ValueError
-
-        st = get_football_settings(user_id)
-        st["bet"] = bet
-        await state.clear()
-
-        balance = get_user_balance(user_id)
-        text = (
-            f'<b><tg-emoji emoji-id="5319298377412812014">⚽️</tg-emoji> Футбол</b>\n'
-            f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji> | Ставка: {bet:.2f} $</b>\n\n'
-            '<b>Выберите исход удара:</b>'
-        )
-        await message.answer(
-            text=text,
-            parse_mode="HTML",
-            reply_markup=get_football_type_keyboard(bet, user_id),
-        )
-    except ValueError:
-        await message.answer(
-            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Введите корректную сумму от 0.1 (например: 0.1 или 1):</b>',
-            parse_mode="HTML"
-        )
-
-@dp.callback_query(F.data.startswith("football_bet_"))
-async def football_bet_process(call: CallbackQuery) -> None:
-    data_parts = call.data.split(":")
-    action_parts = data_parts[0].split("_")
-    bet_type = action_parts[2]
-    bet = float(action_parts[3])
-    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    user_id = call.from_user.id
-    balance = get_user_balance(user_id)
-
-    if balance < bet:
-        await call.answer("❌ Недостаточно средств на балансе!", show_alert=True)
-        return
-
-    user_balances[user_id] -= bet
-    user_turnover[user_id] = get_user_turnover(user_id) + bet
-
-    dice_msg = await call.message.answer_dice(emoji="⚽")
-    dice_val = dice_msg.dice.value
-
-    await asyncio.sleep(4)
-
-    res = calculate_football_result(dice_val, bet_type)
-    bet_type_name = get_football_bet_type_name(bet_type)
-
-    if res['win']:
-        win_amount = round(bet * res['multiplier'], 2)
-        user_balances[user_id] = get_user_balance(user_id) + win_amount
-        await log_bet_to_channel(call.bot, call.from_user, "Футбол ⚽️", bet, f"Исход: {bet_type_name} (Угадал)", win_amount)
-
-        text = (
-            '<b><tg-emoji emoji-id="5449465422971711717">🎉</tg-emoji> Гол! Вы угадали исход удара (' + bet_type_name + ')!\n'
-            f"Выигрыш: {win_amount:.2f} $ (x{res['multiplier']})</b>"
-        )
-    else:
-        await log_bet_to_channel(call.bot, call.from_user, "Футбол ⚽️", bet, f"Исход: {bet_type_name} (Не угадал)", 0.0)
-
-        text = (
-            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Вы не угадали исход удара (' + bet_type_name + ').\n'
-            f"Проигрыш: {bet:.2f} $</b>"
-        )
-
-    await call.message.answer(
-        text=text,
-        parse_mode="HTML",
-        reply_markup=get_football_result_keyboard(bet, owner_id)
-    )
-
-@dp.callback_query(F.data.startswith("football_repeat_"))
-async def football_repeat_handler(call: CallbackQuery) -> None:
-    data_parts = call.data.split(":")
-    action_parts = data_parts[0].split("_")
-    bet = float(action_parts[2])
-    owner_id = int(data_parts[1]) if len(data_parts) > 1 else call.from_user.id
-
-    if not check_owner(call, owner_id):
-        await call.answer("Это не ваша игра!", show_alert=True)
-        return
-
-    user_id = call.from_user.id
-    balance = get_user_balance(user_id)
-    text = (
-        f'<b><tg-emoji emoji-id="5319298377412812014">⚽️</tg-emoji> Футбол</b>\n'
-        f'<b>Баланс: {balance:.2f} <tg-emoji emoji-id="5305445793623218874">💲</tg-emoji> | Ставка: {bet:.2f} $</b>\n\n'
-        '<b>Выберите исход удара:</b>'
-    )
-    await safe_edit_message(call, text, get_football_type_keyboard(bet, owner_id))
-
-async def main() -> None:
-    logging.basicConfig(level=logging.INFO)
-    bot = Bot(token=TOKEN)
-    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+    asyncio.run(dp.start_polling(Bot(token=TOKEN)))
