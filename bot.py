@@ -1473,7 +1473,7 @@ async def withdraw_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(WithdrawState.waiting_for_amount)
     text = (
         '<b><tg-emoji emoji-id="5255868234506213301">📤</tg-emoji> Вывод средств</b>\n\n'
-        '<b>Введите сумму для вывода в USDT (минимум 0.10 $):</b>'
+        '<b>Введите сумму для вывода в USDT (минимум 1.10 $):</b>'
     )
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
