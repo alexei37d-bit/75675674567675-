@@ -2891,4 +2891,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(main)
+asyncio.run(main())  # Calling the function to create and pass the coroutine object
