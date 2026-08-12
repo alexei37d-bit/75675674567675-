@@ -3196,7 +3196,7 @@ async def start_handler(message: Message, state: FSMContext) -> None:
         )
         return
     text = (
-        '<b><tg-emoji emoji-id="5451807640436903198">👋</tg-emoji> Добро пожаловать в игровой бот!\n\n'
+        '<b><tg-emoji emoji-id="5451807640436903198">👋</tg-emoji> Добро пожаловать в DuckBet!\n\n'
         'Выберите раздел в меню ниже:</b>'
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
@@ -3420,7 +3420,7 @@ async def group_send_handler(message: Message) -> None:
     )
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🎁 Активировать", url=check_link)]
+            [InlineKeyboardButton(text="Активировать", url=check_link)]
         ]
     )
     await message.answer(text, parse_mode="HTML", reply_markup=kb, reply_to_message_id=reply_id)
@@ -3439,7 +3439,7 @@ async def wallet_text_handler(message: Message, state: FSMContext) -> None:
     if not await force_subscription_check(message, state): return
     user_id = message.from_user.id
     balance = get_user_balance(user_id)
-    text = f'<b><tg-emoji emoji-id="5197686464325915345">💳</tg-emoji>Баланс: {balance:.2f} <tg-emoji emoji-id="5197422813463483902">💵</tg-emoji></b>'
+    text = f'<b><tg-emoji emoji-id="5197686464325915345">💳</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id="5197422813463483902">💵</tg-emoji></b>'
     await message.answer(text, parse_mode="HTML", reply_markup=wallet_inline_keyboard)
 
 @dp.message(F.text == "Играть")
@@ -3455,7 +3455,7 @@ async def open_wallet_inline_handler(call: CallbackQuery, state: FSMContext) -> 
     if not await force_subscription_check(call, state): return
     user_id = call.from_user.id
     balance = get_user_balance(user_id)
-    text = f'<b><tg-emoji emoji-id="5197686464325915345">👛</tg-emoji>Баланс: {balance:.2f} <tg-emoji emoji-id="5197422813463483902">💵</tg-emoji></b>'
+    text = f'<b><tg-emoji emoji-id="5197686464325915345">👛</tg-emoji> Баланс: {balance:.2f} <tg-emoji emoji-id="5197422813463483902">💵</tg-emoji></b>'
     await safe_edit_message(call, text, wallet_inline_keyboard)
 
 @dp.callback_query(F.data == "open_profile")
