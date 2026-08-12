@@ -3,6 +3,7 @@ import asyncio
 import string
 import aiohttp
 import logging
+import aiosqlite
 from aiogram import Bot, Dispatcher, F, html
 from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
@@ -10,34 +11,44 @@ from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    InlineQuery,
-    InlineQueryResultArticle,
-    InputTextMessageContent,
-    KeyboardButton,
-    Message,
-    ReplyKeyboardMarkup,
+    CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
+    InlineQuery, InlineQueryResultArticle, InputTextMessageContent,
+    KeyboardButton, Message, ReplyKeyboardMarkup,
 )
 
+# --- ИНИЦИАЛИЗАЦИЯ ---
 logger = logging.getLogger(__name__)
-
 TOKEN = "8740242990:AAF2I7c7x_SD6-Dww3WQJKQYbk3WsXYP5BI"
 CRYPTO_PAY_TOKEN = "548204:AAZOXSPMBWOj3XO29UyRcrxpgxlzujtetPO"
 
 dp = Dispatcher()
 
+# --- БАЗА ДАННЫХ ---
+DB_NAME = "bot_data.db"
+
+async def init_db():
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("CREATE TABLE IF NOT EXISTS balances (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0.0)")
+        await db.execute("CREATE TABLE IF NOT EXISTS turnover (user_id INTEGER PRIMARY KEY, amount REAL DEFAULT 0.0)")
+        await db.execute("CREATE TABLE IF NOT EXISTS global_stats (key TEXT PRIMARY KEY, value REAL DEFAULT 0.0)")
+        await db.execute("INSERT OR IGNORE INTO global_stats VALUES ('deposited', 0.0), ('withdrawn', 0.0), ('turnover_all', 0.0)")
+        await db.commit()
+
+async def update_balance(user_id: int, amount: float):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("INSERT OR REPLACE INTO balances (user_id, balance) VALUES (?, COALESCE((SELECT balance FROM balances WHERE user_id = ?), 0) + ?)", (user_id, user_id, amount))
+        await db.commit()
+    user_balances[user_id] = get_user_balance(user_id) # Sync cache
+
+async def update_global_stat(key: str, amount: float):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE global_stats SET value = value + ? WHERE key = ?", (amount, key))
+        await db.commit()
+
 # --- АДМИН-ПАНЕЛЬ ---
 ADMIN_IDS = {7921743592}
 REQUIRED_CHANNEL = "@project_impassL"
 BETS_CHANNEL = "@test_k_anal"
-
-# Глобальные переменные статистики для админки
-total_deposited = 0.0
-total_withdrawn = 0.0
-total_turnover_all = 0.0
-
 
 class AdminState(StatesGroup):
     waiting_for_add_admin = State()
