@@ -48,7 +48,7 @@ async def update_global_stat(key: str, amount: float):
 
 # --- АДМИН-ПАНЕЛЬ ---
 ADMIN_IDS = {7921743592, 8207980755}
-REQUIRED_CHANNELS = ["@project_impassL", "@DuckBets", "@Ducks_chats"]
+REQUIRED_CHANNELS = ["@project_impassL", "@DuckBets", "@Duckcasn"]
 BETS_CHANNEL = "@test_k_anal"
 
 class AdminState(StatesGroup):
@@ -1825,7 +1825,7 @@ async def chek_create_start_handler(
         return
     await state.set_state(ChekState.waiting_for_amount)
     text = (
-        '<b><tg-emoji emoji-id="5449526218233779946">👛</tg-emoji> Введите сумму ОДНОЙ активации (например: 0.50):</b>\n\n'
+        '<b><tg-emoji emoji-id="5449526218233779946">👛</tg-emoji> Введите сумму 1 активации (например: 0.50):</b>\n\n'
         '<i>Для отмены введите /cancel</i>'
     )
     await safe_edit_message(call, text, get_chek_amount_keyboard())
@@ -3090,8 +3090,8 @@ async def start_handler(message: Message, state: FSMContext) -> None:
         return
         
     text = (
-        '<b><tg-emoji emoji-id="5451807640436903198">👋</tg-emoji> Добро пожаловать в игровой бот!\n\n'
-        'Выберите раздел в меню ниже:</b>'
+        '<b><tg-emoji emoji-id="5451807640436903198">👋</tg-emoji> Добро пожаловать в DuckBet!\n\n'
+        'Выберите раздел ниже:</b>'
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
     await message.answer("Главное меню:", reply_markup=menu_inline_keyboard)
