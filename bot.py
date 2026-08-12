@@ -1424,14 +1424,21 @@ async def deposit_start_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(DepositState.waiting_for_amount)
     text = (
         '<b>Введите сумму для пополнения баланса в USDT (например: 0.10):</b>\n\n'
-        '<i>Для отмены введите /cancel</i>'
+        '<i>Для отмены введите /cancel или нажмите кнопку ниже</i>'
     )
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="◀ Назад", callback_data="open_wallet_inline")]
+            [InlineKeyboardButton(text="◀ Назад", callback_data="deposit_cancel_cb")]
         ]
     )
     await safe_edit_message(call, text, kb)
+
+
+@dp.callback_query(F.data == "deposit_cancel_cb")
+async def deposit_cancel_callback(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    text = f'<b>👤 Профиль\n\n{build_profile_text(call.from_user.id, call.from_user.full_name)}</b>'
+    await safe_edit_message(call, text, profile_inline_keyboard)
 
 
 @dp.message(DepositState.waiting_for_amount)
@@ -1493,14 +1500,21 @@ async def withdraw_handler(call: CallbackQuery, state: FSMContext) -> None:
     text = (
         '<b>📤 Вывод средств</b>\n\n'
         '<b>Введите сумму для вывода в USDT (минимум 1.10 $):</b>\n\n'
-        '<i>❌ Для отмены введите /cancel</i>'
+        '<i>❌ Для отмены введите /cancel или нажмите кнопку ниже</i>'
     )
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="◀ Назад", callback_data="open_wallet_inline")]
+            [InlineKeyboardButton(text="◀ Назад", callback_data="withdraw_cancel_cb")]
         ]
     )
     await safe_edit_message(call, text, kb)
+
+
+@dp.callback_query(F.data == "withdraw_cancel_cb")
+async def withdraw_cancel_callback(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    text = f'<b>👤 Профиль\n\n{build_profile_text(call.from_user.id, call.from_user.full_name)}</b>'
+    await safe_edit_message(call, text, profile_inline_keyboard)
 
 
 @dp.message(WithdrawState.waiting_for_amount)
@@ -2671,7 +2685,7 @@ async def basketball_bet_handler(call: CallbackQuery) -> None:
         await log_bet_to_channel(call.bot, call.from_user, "Баскетбол", bet_val, f"Победа ({bet_type_name}) x{res['multiplier']} 🏆", win_amount)
         text = (
             f'<b>🏀 Баскетбол | Ставка: {bet_val:.2f} $ | Выбор: {bet_type_name}</b>\n\n'
-            f'<b>🎉 Поздравляем! Вы угадали и выиграли {win_amount:.2f} $ (x{res['multiplier']})!</b>'
+            f'<b>🎉 Поздравляем! Вы угадали и выиграли {win_amount:.2f} $ (x{res["multiplier"]})!</b>'
         )
     else:
         await log_bet_to_channel(call.bot, call.from_user, "Баскетбол", bet_val, f"Проигрыш ({bet_type_name}) ❌")
@@ -2689,7 +2703,8 @@ async def basketball_bet_handler(call: CallbackQuery) -> None:
 @dp.callback_query(F.data.startswith("basketball_repeat_"))
 async def basketball_repeat_handler(call: CallbackQuery) -> None:
     parts = call.data.split(":")
-    bet_val = float(parts[0].replace("basketball_repeat_", ""))
+    data_part = parts[0].replace("basketball_repeat_", "")
+    bet_val = float(data_part)
     owner_id = int(parts[1])
     if not check_owner(call, owner_id):
         await call.answer("Это чужая игра!", show_alert=True)
@@ -2699,7 +2714,7 @@ async def basketball_repeat_handler(call: CallbackQuery) -> None:
 
 
 # --- ИГРА ФУТБОЛ ---
-@dp.callback_query(F.data == "football_choose_bet")
+@dp.callback_query(F.data.startswith("football_choose_bet"))
 async def football_choose_bet_handler(call: CallbackQuery) -> None:
     parts = call.data.split(":")
     owner_id = int(parts[1]) if len(parts) > 1 else call.from_user.id
@@ -2763,7 +2778,7 @@ async def football_bet_handler(call: CallbackQuery) -> None:
         await log_bet_to_channel(call.bot, call.from_user, "Футбол", bet_val, f"Победа ({bet_type_name}) x{res['multiplier']} 🏆", win_amount)
         text = (
             f'<b>⚽ Футбол | Ставка: {bet_val:.2f} $ | Выбор: {bet_type_name}</b>\n\n'
-            f'<b>🎉 Поздравляем! Вы угадали и выиграли {win_amount:.2f} $ (x{res['multiplier']})!</b>'
+            f'<b>🎉 Поздравляем! Вы угадали и выиграли {win_amount:.2f} $ (x{res["multiplier"]})!</b>'
         )
     else:
         await log_bet_to_channel(call.bot, call.from_user, "Футбол", bet_val, f"Проигрыш ({bet_type_name}) ❌")
@@ -2781,7 +2796,8 @@ async def football_bet_handler(call: CallbackQuery) -> None:
 @dp.callback_query(F.data.startswith("football_repeat_"))
 async def football_repeat_handler(call: CallbackQuery) -> None:
     parts = call.data.split(":")
-    bet_val = float(parts[0].replace("football_repeat_", ""))
+    data_part = parts[0].replace("football_repeat_", "")
+    bet_val = float(data_part)
     owner_id = int(parts[1])
     if not check_owner(call, owner_id):
         await call.answer("Это чужая игра!", show_alert=True)
@@ -2790,22 +2806,16 @@ async def football_repeat_handler(call: CallbackQuery) -> None:
     await safe_edit_message(call, text, get_football_type_keyboard(bet_val, owner_id))
 
 
-# --- ОБЩИЕ ХЕНДЛЕРЫ МЕНЮ И ПРОФИЛЯ ---
-@dp.message(CommandStart())
+# --- ОБЩИЕ ХЕНДЛЕРЫ МЕНЮ И КОШЕЛЬКА ---
+@dp.message(F.text == "/start")
 async def start_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
-    user = message.from_user
-    if user:
-        user_names[user.id] = user.full_name
     args = message.text.split()
     if len(args) > 1:
-        param = args[1]
-        if param.startswith("chek_") or param.startswith("check_"):
-            chek_id = param if param.startswith("chek_") else "chek_" + param[6:]
-            chek = created_cheks.get(chek_id)
-            if not chek or chek["rem_activations"] <= 0:
-                await message.answer("<b>❌ Чек недействителен или уже активирован!</b>", parse_mode="HTML")
-                return
+        chek_code = args[1]
+        chek = created_cheks.get(chek_code)
+        if chek and chek["rem_activations"] > 0:
+            user = message.from_user
             is_subbed = await check_subscription(message.bot, user.id)
             if not is_subbed:
                 kb = await get_subscription_keyboard(message.bot)
@@ -2822,11 +2832,14 @@ async def start_handler(message: Message, state: FSMContext) -> None:
                 await message.answer("<b>❌ Этот чек доступен только для премиум-пользователей!</b>", parse_mode="HTML")
                 return
             if chek.get("password"):
-                await state.update_data(target_chek_id=chek_id)
+                await state.update_data(target_chek_id=chek_code)
                 await state.set_state(ChekState.waiting_for_check_pass_input)
                 await message.answer("<b>🃏 Введите пароль для использования чека:</b>", parse_mode="HTML")
                 return
             await complete_chek_activation(message, user, chek, state)
+            return
+        else:
+            await message.answer("<b>❌ Чек не найден или уже активирован!</b>", parse_mode="HTML")
             return
 
     text = (
@@ -2837,62 +2850,68 @@ async def start_handler(message: Message, state: FSMContext) -> None:
     await message.answer("<b>📌 Главное меню:</b>", parse_mode="HTML", reply_markup=menu_inline_keyboard)
 
 
-@dp.message(F.text == "Меню")
-async def menu_text_handler(message: Message, state: FSMContext) -> None:
-    await state.clear()
-    user = message.from_user
-    if user:
-        user_names[user.id] = user.full_name
-    await message.answer("<b>📌 Главное меню:</b>", parse_mode="HTML", reply_markup=menu_inline_keyboard)
-
-
 @dp.message(F.text == "Кошелек")
 async def wallet_text_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
-    user = message.from_user
-    if user:
-        user_names[user.id] = user.full_name
-    balance = get_user_balance(message.from_user.id)
-    text = f'<b>💰 Ваш кошелек\n\nБаланс: {balance:.2f} $</b>'
+    user_id = message.from_user.id
+    text = (
+        f'<b>💳 Ваш кошелек\n\n'
+        f'Баланс: {get_user_balance(user_id):.2f} $\n'
+        f'Оборот: {get_user_turnover(user_id):.2f} $</b>'
+    )
     await message.answer(text, parse_mode="HTML", reply_markup=wallet_inline_keyboard)
 
 
 @dp.message(F.text == "Играть")
 async def play_text_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
-    user = message.from_user
-    if user:
-        user_names[user.id] = user.full_name
     await message.answer('<b>🎮 Выберите игру:</b>', parse_mode="HTML", reply_markup=games_keyboard)
+
+
+@dp.message(F.text == "Меню")
+async def menu_text_handler(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer('<b>📌 Главное меню:</b>', parse_mode="HTML", reply_markup=menu_inline_keyboard)
 
 
 @dp.callback_query(F.data == "open_wallet_inline")
 async def open_wallet_inline_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    balance = get_user_balance(call.from_user.id)
-    text = f'<b>💰 Ваш кошелек\n\nБаланс: {balance:.2f} $</b>'
+    user_id = call.from_user.id
+    text = (
+        f'<b>💳 Ваш кошелек\n\n'
+        f'Баланс: {get_user_balance(user_id):.2f} $\n'
+        f'Оборот: {get_user_turnover(user_id):.2f} $</b>'
+    )
     await safe_edit_message(call, text, wallet_inline_keyboard)
 
 
 @dp.callback_query(F.data == "open_profile")
-async def open_profile_handler(call: CallbackQuery) -> None:
-    user = call.from_user
-    user_names[user.id] = user.full_name
-    text = build_profile_text(user.id, user.full_name)
+async def open_profile_handler(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    user_id = call.from_user.id
+    text = f'<b>👤 Профиль\n\n{build_profile_text(user_id, call.from_user.full_name)}</b>'
     await safe_edit_message(call, text, profile_inline_keyboard)
 
 
 @dp.callback_query(F.data == "close_profile")
 async def close_profile_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await call.message.delete()
+    text = '<b>📌 Главное меню:</b>'
+    await safe_edit_message(call, text, menu_inline_keyboard)
+
+
+@dp.message(F.text.lower() == "/cancel")
+async def cancel_any_state(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("<b>❌ Действие отменено.</b>", parse_mode="HTML", reply_markup=menu_inline_keyboard)
 
 
 async def main() -> None:
-    logging.basicConfig(level=logging.INFO)
     bot = Bot(token=TOKEN)
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
