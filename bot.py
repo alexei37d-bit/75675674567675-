@@ -1424,21 +1424,14 @@ async def deposit_start_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(DepositState.waiting_for_amount)
     text = (
         '<b>Введите сумму для пополнения баланса в USDT (например: 0.10):</b>\n\n'
-        '<i>Для отмены введите /cancel или нажмите кнопку ниже</i>'
+        '<i>Для отмены введите /cancel</i>'
     )
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="◀ Назад", callback_data="deposit_cancel_cb")]
+            [InlineKeyboardButton(text="◀ Назад", callback_data="open_wallet_inline")]
         ]
     )
     await safe_edit_message(call, text, kb)
-
-
-@dp.callback_query(F.data == "deposit_cancel_cb")
-async def deposit_cancel_callback(call: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
-    text = f'<b>👤 Профиль\n\n{build_profile_text(call.from_user.id, call.from_user.full_name)}</b>'
-    await safe_edit_message(call, text, profile_inline_keyboard)
 
 
 @dp.message(DepositState.waiting_for_amount)
@@ -1500,21 +1493,14 @@ async def withdraw_handler(call: CallbackQuery, state: FSMContext) -> None:
     text = (
         '<b>📤 Вывод средств</b>\n\n'
         '<b>Введите сумму для вывода в USDT (минимум 1.10 $):</b>\n\n'
-        '<i>❌ Для отмены введите /cancel или нажмите кнопку ниже</i>'
+        '<i>❌ Для отмены введите /cancel</i>'
     )
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="◀ Назад", callback_data="withdraw_cancel_cb")]
+            [InlineKeyboardButton(text="◀ Назад", callback_data="open_wallet_inline")]
         ]
     )
     await safe_edit_message(call, text, kb)
-
-
-@dp.callback_query(F.data == "withdraw_cancel_cb")
-async def withdraw_cancel_callback(call: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
-    text = f'<b>👤 Профиль\n\n{build_profile_text(call.from_user.id, call.from_user.full_name)}</b>'
-    await safe_edit_message(call, text, profile_inline_keyboard)
 
 
 @dp.message(WithdrawState.waiting_for_amount)
@@ -1652,7 +1638,7 @@ async def admin_reject_withdraw_handler(call: CallbackQuery) -> None:
     del withdraw_requests[withdraw_id]
 
 
-# --- РАЗДЕЛ ЧЕКИ ---
+# --- РАЗДЕЛ ЧЕКИ С МНОГОКРАТНЫМИ АКТИВАЦИЯМИ ---
 @dp.callback_query(F.data == "open_cheks_menu")
 async def open_cheks_menu_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
@@ -1683,7 +1669,7 @@ async def chek_create_start_handler(
         return
     await state.set_state(ChekState.waiting_for_amount)
     text = (
-        '<b>👛 Отправьте сумму 1 активации:</b>\n\n'
+        '<b>👛 Введите сумму ОДНОЙ активации (например: 0.50):</b>\n\n'
         '<i>Для отмены введите /cancel</i>'
     )
     await safe_edit_message(call, text, get_chek_amount_keyboard())
@@ -1706,7 +1692,8 @@ async def process_chek_quick_amount(
     await state.update_data(chek_amount=amount)
     await state.set_state(ChekState.waiting_for_activations)
     text = (
-        '<b>👥 Введите количество активаций для чека (целое число от 1 и выше):</b>\n\n'
+        '<b>👥 Введите количество активаций для чека (целое число от 1 и выше):\n'
+        'Каждый активировавший получит указанную сумму.</b>\n\n'
         '<i>Для отмены введите /cancel</i>'
     )
     kb = InlineKeyboardMarkup(
@@ -1741,7 +1728,8 @@ async def process_chek_amount_input(
         await state.update_data(chek_amount=amount)
         await state.set_state(ChekState.waiting_for_activations)
         text = (
-            '<b>👥 Введите количество активаций для чека (целое число от 1 и выше):</b>\n\n'
+            '<b>👥 Введите количество активаций для чека (целое число от 1 и выше):\n'
+            'Каждый активировавший получит указанную сумму.</b>\n\n'
             '<i>Для отмены введите /cancel</i>'
         )
         await message.answer(text, parse_mode="HTML")
@@ -1771,7 +1759,7 @@ async def process_chek_activations_input(
         total_cost = amount * activations
         if total_cost > balance:
             await message.answer(
-                f'<b>❌ Недостаточно средств! Общая сумма ({total_cost:.2f} $) превышает ваш баланс ({balance:.2f} $). Введите другое количество активаций (или /cancel для отмены):</b>',
+                f'<b>❌ Недостаточно средств! Общая сумма чека ({total_cost:.2f} $ = {amount} × {activations}) превышает ваш баланс ({balance:.2f} $). Введите меньшее количество активаций (или /cancel):</b>',
                 parse_mode="HTML"
             )
             return
@@ -1794,9 +1782,9 @@ async def process_chek_activations_input(
         if activations == 1:
             title_str = f"Чек на {amount:.2f}$"
         else:
-            title_str = f"Чек на {amount:.2f}$ ({activations} активаций)"
+            title_str = f"Многоразовый чек на {amount:.2f}$ ({activations} активаций)"
         text = (
-            f'<b>🎉 {title_str} успешно создан!\n\n'
+            f'<b>🎉 {title_str} успешно создан и списан с баланса!\n\n'
             f"Ссылка на чек: <code>{check_link}</code></b>"
         )
         await message.answer(text, parse_mode="HTML", reply_markup=get_chek_manage_keyboard(chek_id))
@@ -1831,10 +1819,10 @@ async def chek_manage_handler(call: CallbackQuery, state: FSMContext = None) -> 
     if activations == 1:
         title_str = f"Чек на {amount:.2f}$"
     else:
-        title_str = f"Чек на {amount:.2f}$ на {activations} активаций"
+        title_str = f"Чек на {amount:.2f}$ ({activations} активаций)"
     target_info = f"\nЗакреплен за: {chek['target_user']}" if chek.get("target_user") else ""
     text = (
-        f'<b> Управление: {title_str}\n\n'
+        f'<b>⚙️ Управление: {title_str}\n\n'
         f"Ссылка на чек: <code>{check_link}</code>\n"
         f"Осталось активаций: {chek['rem_activations']}/{activations}{target_info}</b>"
     )
@@ -1910,7 +1898,7 @@ async def chek_limits_menu_handler(call: CallbackQuery, state: FSMContext = None
     only_prem = "Да" if chek["only_premium"] else "Нет"
     target_info = chek["target_user"] if chek.get("target_user") else "Не закреплен"
     text = (
-        f'<b> Настройка ограничений чека <code>{chek_id}</code>:\n\n'
+        f'<b>🔒 Настройка ограничений чека <code>{chek_id}</code>:\n\n'
         f"• Пароль: {has_pass}\n"
         f"• Только Telegram Premium: {only_prem}\n"
         f"• Закреплен за: {target_info}</b>"
@@ -2066,13 +2054,14 @@ async def inline_check_handler(query: InlineQuery) -> None:
             act_str = f"{acts} активации"
         else:
             act_str = f"{acts} активаций"
-        caption_text = f'<b>💸 Чек на {amount_str}${target_str}\n{act_str}</b>'
-        desc_str = f"На {act_str}"
+        caption_text = f'<b>💸 Чек на {amount_str}${target_str}\n👥 {act_str} ({chek["rem_activations"]} осталось)</b>'
+        desc_str = f"На {act_str} ({chek['rem_activations']} доступно)"
+    
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Получить",
+                    text=f"Активировать ({chek['rem_activations']}/{acts})",
                     url=f"https://t.me/{bot_info.username}?start={chek['id']}",
                 )
             ]
@@ -2080,7 +2069,7 @@ async def inline_check_handler(query: InlineQuery) -> None:
     )
     item = InlineQueryResultArticle(
         id=chek_id,
-        title=f"Отправить чек на {amount_str}$",
+        title=f"Отправить чек на {amount_str}$ ({acts} активаций)",
         description=desc_str,
         input_message_content=InputTextMessageContent(
             message_text=caption_text, parse_mode="HTML"
@@ -2110,19 +2099,22 @@ async def complete_chek_activation(
             else:
                 await message_or_call.answer("Чек предназначен для другого игрока!", show_alert=True)
             return
+            
     chek["rem_activations"] -= 1
     if "activated_users" not in chek:
         chek["activated_users"] = set()
     chek["activated_users"].add(user_id)
     user_balances[user_id] = get_user_balance(user_id) + chek["amount"]
+    
     if chek["rem_activations"] <= 0:
         if chek["id"] in created_cheks:
             del created_cheks[chek["id"]]
+            
     amount_str = f"{chek['amount']:.2f}".rstrip("0").rstrip(".")
     if chek["amount"].is_integer():
         amount_str = str(int(chek["amount"]))
     text = (
-        f'<b>💸 Вы получили {amount_str}$</b>'
+        f'<b>💸 Вы успешно активировали чек и получили {amount_str}$!</b>'
     )
     if isinstance(message_or_call, Message):
         await message_or_call.answer(text, parse_mode="HTML")
@@ -2130,11 +2122,13 @@ async def complete_chek_activation(
         await message_or_call.message.answer(text, parse_mode="HTML")
     if state:
         await state.clear()
+        
     user_name = html.quote(user.full_name)
     user_link = f'<a href="tg://user?id={user_id}">{user_name}</a>'
+    rem_info = f" (осталось активаций: {chek['rem_activations']})" if chek["rem_activations"] > 0 else " (чек полностью исчерпан)"
     owner_text = (
         f'<b>🎟 {user_link} '
-        f"активировал ваш чек на {amount_str}$</b>"
+        f"активировал ваш чек на {amount_str}${rem_info}</b>"
     )
     try:
         await message_or_call.bot.send_message(
@@ -2161,15 +2155,15 @@ async def activate_chek_btn_handler(
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
     if not chek:
-        await call.answer("Чек не найден!", show_alert=True)
+        await call.answer("Чек не найден или уже исчерпан!", show_alert=True)
         return
     user = call.from_user
     user_id = user.id
     if "activated_users" in chek and user_id in chek["activated_users"]:
-        await call.answer("Этот чек уже активирован!", show_alert=True)
+        await call.answer("Вы уже активировали этот чек!", show_alert=True)
         return
     if chek["rem_activations"] <= 0:
-        await call.answer("Этот чек уже активирован!", show_alert=True)
+        await call.answer("Этот чек уже полностью активирован!", show_alert=True)
         return
     if chek.get("only_premium") and not getattr(user, "is_premium", False):
         await call.answer(
@@ -2209,7 +2203,7 @@ async def process_check_pass_input(
     chek_id = data.get("target_chek_id")
     chek = created_cheks.get(chek_id)
     if not chek or chek["rem_activations"] <= 0:
-        await message.answer("<b>❌ Чек недействителен или уже активирован!</b>", parse_mode="HTML")
+        await message.answer("<b>❌ Чек недействителен или уже полностью активирован!</b>", parse_mode="HTML")
         await state.clear()
         return
     pwd = message.text.strip()
@@ -2675,8 +2669,8 @@ async def basketball_bet_handler(call: CallbackQuery) -> None:
     msg = await call.message.answer_dice(emoji="🏀")
     await asyncio.sleep(4)
 
-    dice_val = msg.dice.value
-    res = calculate_basketball_result(dice_val, bet_type)
+    dice_value = msg.dice.value
+    res = calculate_basketball_result(dice_value, bet_type)
     bet_type_name = get_basketball_bet_type_name(bet_type)
 
     if res['win']:
@@ -2684,27 +2678,27 @@ async def basketball_bet_handler(call: CallbackQuery) -> None:
         user_balances[user_id] = get_user_balance(user_id) + win_amount
         await log_bet_to_channel(call.bot, call.from_user, "Баскетбол", bet_val, f"Победа ({bet_type_name}) x{res['multiplier']} 🏆", win_amount)
         text = (
-            f'<b>🏀 Баскетбол | Ставка: {bet_val:.2f} $ | Выбор: {bet_type_name}</b>\n\n'
-            f'<b>🎉 Поздравляем! Вы угадали и выиграли {win_amount:.2f} $ (x{res["multiplier"]})!</b>'
+            f'<b>🏀 Баскетбол | Ставка: {bet_val:.2f} $ | Исход: {bet_type_name}</b>\n\n'
+            f'<b>🎉 Поздравляем! Вы выиграли {win_amount:.2f} $ (x{res["multiplier"]})!</b>'
         )
     else:
         await log_bet_to_channel(call.bot, call.from_user, "Баскетбол", bet_val, f"Проигрыш ({bet_type_name}) ❌")
         text = (
-            f'<b>🏀 Баскетбол | Ставка: {bet_val:.2f} $ | Выбор: {bet_type_name}</b>\n\n'
-            f'<b>❌ К сожалению, вы не угадали и проиграли {bet_val:.2f} $!</b>'
+            f'<b>🏀 Баскетбол | Ставка: {bet_val:.2f} $ | Исход: {bet_type_name}</b>\n\n'
+            f'<b>❌ К сожалению, вы проиграли {bet_val:.2f} $!</b>'
         )
     try:
         await msg.delete()
     except Exception:
         pass
-    await safe_edit_message(call, text, get_basketball_result_keyboard(bet_val, owner_id))
+    await call.message.edit_text(text=text, parse_mode="HTML", reply_markup=get_basketball_result_keyboard(bet_val, owner_id))
 
 
 @dp.callback_query(F.data.startswith("basketball_repeat_"))
 async def basketball_repeat_handler(call: CallbackQuery) -> None:
     parts = call.data.split(":")
-    data_part = parts[0].replace("basketball_repeat_", "")
-    bet_val = float(data_part)
+    sub_parts = parts[0].replace("basketball_repeat_", "").rsplit("_", 1)
+    bet_val = float(sub_parts[0]) if len(sub_parts) > 0 else 0.1
     owner_id = int(parts[1])
     if not check_owner(call, owner_id):
         await call.answer("Это чужая игра!", show_alert=True)
@@ -2768,8 +2762,8 @@ async def football_bet_handler(call: CallbackQuery) -> None:
     msg = await call.message.answer_dice(emoji="⚽")
     await asyncio.sleep(4)
 
-    dice_val = msg.dice.value
-    res = calculate_football_result(dice_val, bet_type)
+    dice_value = msg.dice.value
+    res = calculate_football_result(dice_value, bet_type)
     bet_type_name = get_football_bet_type_name(bet_type)
 
     if res['win']:
@@ -2777,27 +2771,27 @@ async def football_bet_handler(call: CallbackQuery) -> None:
         user_balances[user_id] = get_user_balance(user_id) + win_amount
         await log_bet_to_channel(call.bot, call.from_user, "Футбол", bet_val, f"Победа ({bet_type_name}) x{res['multiplier']} 🏆", win_amount)
         text = (
-            f'<b>⚽ Футбол | Ставка: {bet_val:.2f} $ | Выбор: {bet_type_name}</b>\n\n'
-            f'<b>🎉 Поздравляем! Вы угадали и выиграли {win_amount:.2f} $ (x{res["multiplier"]})!</b>'
+            f'<b>⚽ Футбол | Ставка: {bet_val:.2f} $ | Исход: {bet_type_name}</b>\n\n'
+            f'<b>🎉 Поздравляем! Вы выиграли {win_amount:.2f} $ (x{res["multiplier"]})!</b>'
         )
     else:
         await log_bet_to_channel(call.bot, call.from_user, "Футбол", bet_val, f"Проигрыш ({bet_type_name}) ❌")
         text = (
-            f'<b>⚽ Футбол | Ставка: {bet_val:.2f} $ | Выбор: {bet_type_name}</b>\n\n'
-            f'<b>❌ К сожалению, вы не угадали и проиграли {bet_val:.2f} $!</b>'
+            f'<b>⚽ Футбол | Ставка: {bet_val:.2f} $ | Исход: {bet_type_name}</b>\n\n'
+            f'<b>❌ К сожалению, вы проиграли {bet_val:.2f} $!</b>'
         )
     try:
         await msg.delete()
     except Exception:
         pass
-    await safe_edit_message(call, text, get_football_result_keyboard(bet_val, owner_id))
+    await call.message.edit_text(text=text, parse_mode="HTML", reply_markup=get_football_result_keyboard(bet_val, owner_id))
 
 
 @dp.callback_query(F.data.startswith("football_repeat_"))
 async def football_repeat_handler(call: CallbackQuery) -> None:
     parts = call.data.split(":")
-    data_part = parts[0].replace("football_repeat_", "")
-    bet_val = float(data_part)
+    sub_parts = parts[0].replace("football_repeat_", "").rsplit("_", 1)
+    bet_val = float(sub_parts[0]) if len(sub_parts) > 0 else 0.1
     owner_id = int(parts[1])
     if not check_owner(call, owner_id):
         await call.answer("Это чужая игра!", show_alert=True)
@@ -2806,15 +2800,19 @@ async def football_repeat_handler(call: CallbackQuery) -> None:
     await safe_edit_message(call, text, get_football_type_keyboard(bet_val, owner_id))
 
 
-# --- ОБЩИЕ ХЕНДЛЕРЫ МЕНЮ И КОШЕЛЬКА ---
-@dp.message(F.text == "/start")
+# --- ОБЩИЕ КОМАНДЫ ---
+@dp.message(CommandStart())
 async def start_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
-    args = message.text.split()
+    args = message.text.split(maxsplit=1)
     if len(args) > 1:
-        chek_code = args[1]
-        chek = created_cheks.get(chek_code)
-        if chek and chek["rem_activations"] > 0:
+        payload = args[1].strip()
+        if payload.startswith("chek_") or payload.startswith("check_"):
+            chek_id = payload if payload.startswith("chek_") else "chek_" + payload[6:]
+            chek = created_cheks.get(chek_id)
+            if not chek or chek["rem_activations"] <= 0:
+                await message.answer("<b>❌ Этот чек недействителен или уже полностью активирован!</b>", parse_mode="HTML")
+                return
             user = message.from_user
             is_subbed = await check_subscription(message.bot, user.id)
             if not is_subbed:
@@ -2832,57 +2830,59 @@ async def start_handler(message: Message, state: FSMContext) -> None:
                 await message.answer("<b>❌ Этот чек доступен только для премиум-пользователей!</b>", parse_mode="HTML")
                 return
             if chek.get("password"):
-                await state.update_data(target_chek_id=chek_code)
+                await state.update_data(target_chek_id=chek_id)
                 await state.set_state(ChekState.waiting_for_check_pass_input)
                 await message.answer("<b>🃏 Введите пароль для использования чека:</b>", parse_mode="HTML")
                 return
             await complete_chek_activation(message, user, chek, state)
             return
-        else:
-            await message.answer("<b>❌ Чек не найден или уже активирован!</b>", parse_mode="HTML")
-            return
 
+    user_id = message.from_user.id
+    user_names[user_id] = message.from_user.full_name
+    is_subbed = await check_subscription(message.bot, user_id)
+    if not is_subbed:
+        kb = await get_subscription_keyboard(message.bot)
+        await message.answer(
+            f'<b>⚠️ Для использования бота вы должны быть подписаны на наш канал {REQUIRED_CHANNEL}!</b>',
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+        return
     text = (
-        '<b>👋 Добро пожаловать в игровой бот!\n\n'
-        'Используйте меню ниже для навигации:</b>'
+        '<b><tg-emoji emoji-id="5451807640436903198">👋</tg-emoji> Добро пожаловать в игровой бот!\n\n'
+        'Выберите раздел в меню ниже:</b>'
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
-    await message.answer("<b>📌 Главное меню:</b>", parse_mode="HTML", reply_markup=menu_inline_keyboard)
+    await message.answer("Главное меню:", reply_markup=menu_inline_keyboard)
+
+
+@dp.message(F.text == "Меню")
+async def menu_text_handler(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("<b>Главное меню:</b>", parse_mode="HTML", reply_markup=menu_inline_keyboard)
 
 
 @dp.message(F.text == "Кошелек")
 async def wallet_text_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
     user_id = message.from_user.id
-    text = (
-        f'<b>💳 Ваш кошелек\n\n'
-        f'Баланс: {get_user_balance(user_id):.2f} $\n'
-        f'Оборот: {get_user_turnover(user_id):.2f} $</b>'
-    )
+    balance = get_user_balance(user_id)
+    text = f'<b>💳 Ваш кошелек\n\nБаланс: {balance:.2f} $</b>'
     await message.answer(text, parse_mode="HTML", reply_markup=wallet_inline_keyboard)
 
 
 @dp.message(F.text == "Играть")
 async def play_text_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer('<b>🎮 Выберите игру:</b>', parse_mode="HTML", reply_markup=games_keyboard)
-
-
-@dp.message(F.text == "Меню")
-async def menu_text_handler(message: Message, state: FSMContext) -> None:
-    await state.clear()
-    await message.answer('<b>📌 Главное меню:</b>', parse_mode="HTML", reply_markup=menu_inline_keyboard)
+    await message.answer("<b>🎮 Выберите игру:</b>", parse_mode="HTML", reply_markup=games_keyboard)
 
 
 @dp.callback_query(F.data == "open_wallet_inline")
 async def open_wallet_inline_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     user_id = call.from_user.id
-    text = (
-        f'<b>💳 Ваш кошелек\n\n'
-        f'Баланс: {get_user_balance(user_id):.2f} $\n'
-        f'Оборот: {get_user_turnover(user_id):.2f} $</b>'
-    )
+    balance = get_user_balance(user_id)
+    text = f'<b>💳 Ваш кошелек\n\nБаланс: {balance:.2f} $</b>'
     await safe_edit_message(call, text, wallet_inline_keyboard)
 
 
@@ -2890,28 +2890,27 @@ async def open_wallet_inline_handler(call: CallbackQuery, state: FSMContext) -> 
 async def open_profile_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     user_id = call.from_user.id
-    text = f'<b>👤 Профиль\n\n{build_profile_text(user_id, call.from_user.full_name)}</b>'
+    text = build_profile_text(user_id, call.from_user.full_name)
     await safe_edit_message(call, text, profile_inline_keyboard)
 
 
 @dp.callback_query(F.data == "close_profile")
 async def close_profile_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    text = '<b>📌 Главное меню:</b>'
-    await safe_edit_message(call, text, menu_inline_keyboard)
+    await safe_edit_message(call, "<b>Главное меню:</b>", menu_inline_keyboard)
 
 
-@dp.message(F.text.lower() == "/cancel")
-async def cancel_any_state(message: Message, state: FSMContext) -> None:
+@dp.message(F.text == "/cancel")
+async def cancel_handler(message: Message, state: FSMContext) -> None:
     await state.clear()
     await message.answer("<b>❌ Действие отменено.</b>", parse_mode="HTML", reply_markup=menu_inline_keyboard)
 
 
 async def main() -> None:
+    logging.basicConfig(level=logging.INFO)
     bot = Bot(token=TOKEN)
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
