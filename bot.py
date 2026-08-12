@@ -47,7 +47,7 @@ async def update_global_stat(key: str, amount: float):
         await db.commit()
 
 # --- АДМИН-ПАНЕЛЬ ---
-ADMIN_IDS = {7921743592, 8207980755}
+ADMIN_IDS = {8207980755, 7921743592}
 REQUIRED_CHANNELS = ["@project_impassL", "@DuckBets", "@Duckcasn"]
 BETS_CHANNEL = "@test_k_anal"
 WITHDRAW_CHANNEL = "@Duckcasn"
