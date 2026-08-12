@@ -84,10 +84,9 @@ async def force_subscription_check(message_or_call, state=None):
         if isinstance(message_or_call, Message):
             await message_or_call.answer(text, parse_mode="HTML", reply_markup=kb)
         else:
-            # Для callback query пытаемся отредактировать или ответить новым сообщением
             try:
                 await message_or_call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-            except:
+            except Exception:
                 await message_or_call.message.answer(text, parse_mode="HTML", reply_markup=kb)
             await message_or_call.answer()
             
@@ -1478,7 +1477,7 @@ async def manual_deposit_check_handler(call: CallbackQuery) -> None:
         await call.answer("Это не ваша кнопка!", show_alert=True)
         return
         
-    # Notify admins
+    # Notify admins (EXCEPT SELF)
     admin_kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -1495,6 +1494,7 @@ async def manual_deposit_check_handler(call: CallbackQuery) -> None:
     )
     
     for admin_id in ADMIN_IDS:
+        if admin_id == user_id: continue  # FIX: Don't notify self
         try:
             await call.bot.send_message(admin_id, admin_text, parse_mode="HTML", reply_markup=admin_kb)
         except Exception:
@@ -1701,6 +1701,7 @@ async def withdraw_amount_process(message: Message, state: FSMContext) -> None:
         f'<b>Сумма:</b> <code>{amount:.2f} $</code>'
     )
     for admin_id in ADMIN_IDS:
+        if admin_id == user_id: continue  # FIX: Don't notify self
         try:
             await message.bot.send_message(admin_id, admin_text, parse_mode="HTML", reply_markup=admin_kb)
         except Exception:
