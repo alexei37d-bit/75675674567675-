@@ -1,0 +1,93 @@
+import aiosqlite
+import os
+
+DB_NAME = "bot_data.db"
+
+async def init_db():
+    """Инициализация базы данных и создание таблиц если их нет."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS balances (
+                user_id INTEGER PRIMARY KEY, 
+                balance REAL DEFAULT 0.0
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS turnover (
+                user_id INTEGER PRIMARY KEY, 
+                amount REAL DEFAULT 0.0
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS global_stats (
+                key TEXT PRIMARY KEY, 
+                value REAL DEFAULT 0.0
+            )
+        """)
+        # Создаем начальные значения статистики, если их нет
+        await db.execute("INSERT OR IGNORE INTO global_stats VALUES ('deposited', 0.0)")
+        await db.execute("INSERT OR IGNORE INTO global_stats VALUES ('withdrawn', 0.0)")
+        await db.execute("INSERT OR IGNORE INTO global_stats VALUES ('turnover_all', 0.0)")
+        await db.commit()
+
+async def get_balance(user_id: int) -> float:
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT balance FROM balances WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0.0
+
+async def set_balance(user_id: int, amount: float):
+    """Устанавливает точный баланс."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO balances (user_id, balance) VALUES (?, ?)",
+            (user_id, amount)
+        )
+        await db.commit()
+
+async def update_balance(user_id: int, diff: float):
+    """Изменяет баланс на величину diff (может быть отрицательной)."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT INTO balances (user_id, balance) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET balance = balance + ?",
+            (user_id, diff, diff)
+        )
+        await db.commit()
+
+async def get_turnover(user_id: int) -> float:
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT amount FROM turnover WHERE user_id = ?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0.0
+
+async def update_turnover(user_id: int, amount: float):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "INSERT INTO turnover (user_id, amount) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET amount = amount + ?",
+            (user_id, amount, amount)
+        )
+        await db.commit()
+
+async def get_global_stat(key: str) -> float:
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT value FROM global_stats WHERE key = ?", (key,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0.0
+
+async def update_global_stat(key: str, amount: float):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("UPDATE global_stats SET value = value + ? WHERE key = ?", (amount, key))
+        await db.commit()
+
+async def get_all_users_data():
+    """Получает всех пользователей для топа."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        # Объединяем балансы и обороты
+        async with db.execute("""
+            SELECT b.user_id, b.balance, COALESCE(t.amount, 0.0) 
+            FROM balances b
+            LEFT JOIN turnover t ON b.user_id = t.user_id
+        """) as cursor:
+            return await cursor.fetchall()
