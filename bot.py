@@ -41,7 +41,6 @@ async def update_balance(user_id: int, amount: float):
             (user_id, user_id, amount)
         )
         await db.commit()
-    # Обновляем кэш только после успешной записи в БД
     if user_id in user_balances:
         user_balances[user_id] += amount
     else:
@@ -79,7 +78,6 @@ async def check_subscription(bot: Bot, user_id: int) -> bool:
         return False
 
 async def force_subscription_check(message_or_call, state=None):
-    """Универсальная проверка подписки."""
     user_id = message_or_call.from_user.id
     bot = message_or_call.bot if hasattr(message_or_call, 'bot') else message_or_call.message.bot
     is_subbed = await check_subscription(bot, user_id)
@@ -232,11 +230,7 @@ async def admin_add_balance_amount_process(message: Message, state: FSMContext) 
             raise ValueError
         data = await state.get_data()
         target_id = data["target_id"]
-        
-        # ИСПРАВЛЕНИЕ БАГА X2: Убрали ручное изменение user_balances, 
-        # так как update_balance делает это само.
         await update_balance(target_id, amount)
-        
         await state.clear()
         new_bal = get_user_balance(target_id)
         await message.answer(
@@ -285,13 +279,8 @@ async def admin_sub_balance_amount_process(message: Message, state: FSMContext) 
             raise ValueError
         data = await state.get_data()
         target_id = data["target_id"]
-        
-        current_bal = get_user_balance(target_id)
-        diff = -amount 
-        
-        # ИСПРАВЛЕНИЕ БАГА X2
+        diff = -amount
         await update_balance(target_id, diff)
-        
         await state.clear()
         new_bal = get_user_balance(target_id)
         await message.answer(
@@ -661,8 +650,6 @@ def generate_top_text(user_id: int) -> str:
 @dp.callback_query(F.data == "open_top_menu")
 async def open_top_menu_handler(call: CallbackQuery) -> None:
     if not await force_subscription_check(call): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     user_id = call.from_user.id
     if user_id not in top_modes:
         top_modes[user_id] = "turnover"
@@ -672,8 +659,6 @@ async def open_top_menu_handler(call: CallbackQuery) -> None:
 @dp.callback_query(F.data == "top_mode_turnover")
 async def top_mode_turnover_handler(call: CallbackQuery) -> None:
     if not await force_subscription_check(call): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     user_id = call.from_user.id
     top_modes[user_id] = "turnover"
     text = generate_top_text(user_id)
@@ -682,8 +667,6 @@ async def top_mode_turnover_handler(call: CallbackQuery) -> None:
 @dp.callback_query(F.data == "top_mode_balance")
 async def top_mode_balance_handler(call: CallbackQuery) -> None:
     if not await force_subscription_check(call): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     user_id = call.from_user.id
     top_modes[user_id] = "balance"
     text = generate_top_text(user_id)
@@ -1071,8 +1054,8 @@ def calculate_football_result(football_value: int, bet_type: str):
 
 # --- КУБ ---
 DICE_EMOJI_ID = "5451788978804001506"
-# Новые коэффициенты
-DICE_COEFF_SIMPLE = 3.8
+DICE_COEFF_1 = 1.9
+DICE_COEFF_2 = 3.8
 DICE_COEFF_SEVEN = 6.0
 
 def get_dice_bet_selection_keyboard(owner_id: int) -> InlineKeyboardMarkup:
@@ -1091,10 +1074,10 @@ def get_dice_bet_selection_keyboard(owner_id: int) -> InlineKeyboardMarkup:
 def get_dice_type_keyboard(bet: float, owner_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=f"Чет (x{DICE_COEFF_SIMPLE})", callback_data=f"dice_bet_even_{bet}:{owner_id}")],
-            [InlineKeyboardButton(text=f"Нечет (x{DICE_COEFF_SIMPLE})", callback_data=f"dice_bet_odd_{bet}:{owner_id}")],
-            [InlineKeyboardButton(text=f"Больше 3 (x{DICE_COEFF_SIMPLE})", callback_data=f"dice_bet_more_{bet}:{owner_id}")],
-            [InlineKeyboardButton(text=f"Меньше 4 (x{DICE_COEFF_SIMPLE})", callback_data=f"dice_bet_less_{bet}:{owner_id}")],
+            [InlineKeyboardButton(text=f"Чет (x{DICE_COEFF_1})", callback_data=f"dice_bet_even_{bet}:{owner_id}")],
+            [InlineKeyboardButton(text=f"Нечет (x{DICE_COEFF_1})", callback_data=f"dice_bet_odd_{bet}:{owner_id}")],
+            [InlineKeyboardButton(text=f"Больше (x{DICE_COEFF_1})", callback_data=f"dice_bet_more_{bet}:{owner_id}")],
+            [InlineKeyboardButton(text=f"Меньше (x{DICE_COEFF_1})", callback_data=f"dice_bet_less_{bet}:{owner_id}")],
             [InlineKeyboardButton(text="🎲 2 Куба", callback_data=f"dice_2_menu_{bet}:{owner_id}")],
             [InlineKeyboardButton(text="◀ Изменить ставку", callback_data=f"dice_choose_bet:{owner_id}")],
         ]
@@ -1103,11 +1086,11 @@ def get_dice_type_keyboard(bet: float, owner_id: int) -> InlineKeyboardMarkup:
 def get_dice_2_menu_keyboard(bet: float, owner_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=f"2 Чет (x{DICE_COEFF_SIMPLE})", callback_data=f"dice2_bet_even_{bet}:{owner_id}")],
-            [InlineKeyboardButton(text=f"2 Нечет (x{DICE_COEFF_SIMPLE})", callback_data=f"dice2_bet_odd_{bet}:{owner_id}")],
-            [InlineKeyboardButton(text=f"2 Больше 7 (x{DICE_COEFF_SIMPLE})", callback_data=f"dice2_bet_more_{bet}:{owner_id}")],
-            [InlineKeyboardButton(text=f"2 Меньше 7 (x{DICE_COEFF_SIMPLE})", callback_data=f"dice2_bet_less_{bet}:{owner_id}")],
-            [InlineKeyboardButton(text=f"2 Ровно 7 (x{DICE_COEFF_SEVEN})", callback_data=f"dice2_bet_seven_{bet}:{owner_id}")],
+            [InlineKeyboardButton(text=f"Чет (x{DICE_COEFF_2})", callback_data=f"dice2_bet_even_{bet}:{owner_id}")],
+            [InlineKeyboardButton(text=f"Нечет (x{DICE_COEFF_2})", callback_data=f"dice2_bet_odd_{bet}:{owner_id}")],
+            [InlineKeyboardButton(text=f"Больше 7 (x{DICE_COEFF_2})", callback_data=f"dice2_bet_more_{bet}:{owner_id}")],
+            [InlineKeyboardButton(text=f"Меньше 7 (x{DICE_COEFF_2})", callback_data=f"dice2_bet_less_{bet}:{owner_id}")],
+            [InlineKeyboardButton(text=f"Ровно 7 (x{DICE_COEFF_SEVEN})", callback_data=f"dice2_bet_seven_{bet}:{owner_id}")],
             [InlineKeyboardButton(text="◀ Назад", callback_data=f"dice_type_menu_{bet}:{owner_id}")],
         ]
     )
@@ -1142,20 +1125,6 @@ async def locked_cell_handler(call: CallbackQuery) -> None:
 @dp.callback_query(F.data == "deposit")
 async def deposit_start_handler(call: CallbackQuery, state: FSMContext) -> None:
     if not await force_subscription_check(call, state): return
-    # Защита от чужих нажатий (если вдруг кнопка пришла из группы или пересланного сообщения)
-    # Здесь owner_id не передается явно, но проверяем контекст. 
-    # Для безопасности считаем владельцем того, кто нажал, если это ЛС.
-    # Но так как мы хотим защиту в группе, нам нужно знать автора.
-    # В данном случае кнопка "Пополнить" обычно личная. 
-    # Если она встроена в сообщение в группе, то нужно передавать ID.
-    # Но стандартные клавиатуры wallet_inline_keyboard не имеют owner_id.
-    # Поэтому здесь оставляем как есть для ЛС, либо предполагаем, что в группе эта кнопка не используется без привязки.
-    # Однако, чтобы выполнить требование "никогда не трогать чужие кнопки", 
-    # мы должны добавить проверку везде. Но так как в wallet_inline_keyboard нет owner_id,
-    # мы не можем проверить. НО! В группе эти кнопки вызываются через URL start=deposit.
-    # Значит в группе они не инлайн.
-    # Оставляем как есть для ЛС.
-    
     await state.set_state(DepositState.waiting_for_method)
     text = '<b><tg-emoji emoji-id="5449789954995559460">💎</tg-emoji> Выберите способ пополнения:</b>'
     kb = InlineKeyboardMarkup(
@@ -1247,11 +1216,8 @@ async def admin_confirm_deposit_process(message: Message, state: FSMContext) -> 
         if amount <= 0: raise ValueError
         data = await state.get_data()
         user_id = data["target_deposit_user"]
-        
-        # ИСПРАВЛЕНИЕ БАГА X2
         await update_balance(user_id, amount)
         await update_global_stat('deposited', amount)
-        
         await state.clear()
         await message.answer(
             f'<b><tg-emoji emoji-id="5452168761287152584">✅</tg-emoji> Баланс пользователя <code>{user_id}</code> пополнен на {amount:.2f} $!</b>',
@@ -1329,7 +1295,6 @@ async def check_pay_handler(call: CallbackQuery) -> None:
         status = await get_crypto_invoice_status(int(invoice_id))
     if status == "paid":
         user_id = call.from_user.id
-        # ИСПРАВЛЕНИЕ БАГА X2
         await update_balance(user_id, amount)
         await update_global_stat('deposited', amount)
         await call.answer("✅ Оплата успешно подтверждена!", show_alert=True)
@@ -1501,8 +1466,6 @@ async def admin_reject_withdraw_handler(call: CallbackQuery) -> None:
 @dp.callback_query(F.data == "open_cheks_menu")
 async def open_cheks_menu_handler(call: CallbackQuery, state: FSMContext) -> None:
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     await state.clear()
     text = (
         '<b><tg-emoji emoji-id="5307773751796996779">🎟</tg-emoji> </b>'
@@ -1514,8 +1477,6 @@ async def open_cheks_menu_handler(call: CallbackQuery, state: FSMContext) -> Non
 @dp.callback_query(F.data == "chek_create_start")
 async def chek_create_start_handler(call: CallbackQuery, state: FSMContext) -> None:
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     if call.message.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL]:
         await call.answer()
         await call.message.answer('<b>Перейдите в личные сообщения с ботом <tg-emoji emoji-id="5312140414982071786">❌</tg-emoji></b>', parse_mode="HTML")
@@ -1535,8 +1496,6 @@ async def chek_create_start_handler(call: CallbackQuery, state: FSMContext) -> N
 @dp.callback_query(F.data.startswith("chek_amount_"))
 async def process_chek_quick_amount(call: CallbackQuery, state: FSMContext) -> None:
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     user_id = call.from_user.id
     balance = get_user_balance(user_id)
     choice = call.data.split("_")[2]
@@ -1644,8 +1603,6 @@ async def process_chek_activations_input(message: Message, state: FSMContext) ->
 
 @dp.callback_query(F.data.startswith("chek_copy_link:"))
 async def chek_copy_link_handler(call: CallbackQuery) -> None:
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     chek_id = call.data.split(":")[1]
     bot_info = await call.bot.get_me()
     check_link = f"https://t.me/{bot_info.username}?start={chek_id}"
@@ -1654,8 +1611,6 @@ async def chek_copy_link_handler(call: CallbackQuery) -> None:
 @dp.callback_query(F.data.startswith("chek_manage:"))
 async def chek_manage_handler(call: CallbackQuery, state: FSMContext = None) -> None:
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     if state:
         await state.clear()
     chek_id = call.data.split(":")[1]
@@ -1682,8 +1637,6 @@ async def chek_manage_handler(call: CallbackQuery, state: FSMContext = None) -> 
 @dp.callback_query(F.data.startswith("chek_pin_user:"))
 async def chek_pin_user_start(call: CallbackQuery, state: FSMContext) -> None:
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     chek_id = call.data.split(":")[1]
     await state.update_data(target_chek_id=chek_id)
     await state.set_state(ChekState.waiting_for_target_user)
@@ -1717,8 +1670,6 @@ async def chek_pin_user_process(message: Message, state: FSMContext) -> None:
 @dp.callback_query(F.data.startswith("chek_unpin_user:"))
 async def chek_unpin_user_handler(call: CallbackQuery, state: FSMContext) -> None:
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
     if chek:
@@ -1729,8 +1680,6 @@ async def chek_unpin_user_handler(call: CallbackQuery, state: FSMContext) -> Non
 @dp.callback_query(F.data.startswith("chek_limits_menu:"))
 async def chek_limits_menu_handler(call: CallbackQuery, state: FSMContext = None) -> None:
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     if state:
         await state.clear()
     chek_id = call.data.split(":")[1]
@@ -1752,8 +1701,6 @@ async def chek_limits_menu_handler(call: CallbackQuery, state: FSMContext = None
 @dp.callback_query(F.data.startswith("chek_set_pass:"))
 async def chek_set_pass_start(call: CallbackQuery, state: FSMContext) -> None:
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     chek_id = call.data.split(":")[1]
     await state.update_data(target_chek_id=chek_id)
     await state.set_state(ChekState.waiting_for_password)
@@ -1767,8 +1714,6 @@ async def chek_set_pass_start(call: CallbackQuery, state: FSMContext) -> None:
 @dp.callback_query(F.data.startswith("chek_remove_pass:"))
 async def chek_remove_pass_handler(call: CallbackQuery, state: FSMContext) -> None:
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
     if chek:
@@ -1796,8 +1741,6 @@ async def chek_set_pass_process(message: Message, state: FSMContext) -> None:
 @dp.callback_query(F.data.startswith("chek_toggle_premium:"))
 async def chek_toggle_premium_handler(call: CallbackQuery, state: FSMContext) -> None:
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
     if chek:
@@ -1807,8 +1750,6 @@ async def chek_toggle_premium_handler(call: CallbackQuery, state: FSMContext) ->
 @dp.callback_query(F.data.startswith("chek_delete:"))
 async def chek_delete_handler(call: CallbackQuery) -> None:
     if not await force_subscription_check(call): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     chek_id = call.data.split(":")[1]
     chek = created_cheks.get(chek_id)
     if chek:
@@ -1824,8 +1765,6 @@ async def chek_delete_handler(call: CallbackQuery) -> None:
 @dp.callback_query(F.data == "chek_active_list")
 async def chek_active_list_handler(call: CallbackQuery) -> None:
     if not await force_subscription_check(call): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     user_id = call.from_user.id
     user_cheks = [c for c in created_cheks.values() if c["owner_id"] == user_id]
     if not user_cheks:
@@ -2002,8 +1941,6 @@ async def process_check_pass_input(message: Message, state: FSMContext) -> None:
 @dp.callback_query(F.data == "back_to_games")
 async def back_to_games_handler(call: CallbackQuery) -> None:
     if not await force_subscription_check(call): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     text = '<b><tg-emoji emoji-id="5309815458990433715">🎮</tg-emoji> Выберите игру:</b>'
     await safe_edit_message(call, text, games_keyboard)
 
@@ -2258,7 +2195,6 @@ async def open_cell_handler(call: CallbackQuery) -> None:
         game_data["game_over"] = True
         bet = game_data["bet"]
         await log_bet_to_channel(call.bot, call.from_user, "Мины", bet, "Проигрыш 💥")
-        multiplier = calculate_multiplier(game_data["mines_count"], len(game_data["opened"]))
         text = (
             f'<b><tg-emoji emoji-id="5452018153963948977">💣</tg-emoji> Мины | Ставка: {bet:.2f} $ | Мин: {game_data["mines_count"]}</b>\n\n'
             f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Вы проиграли {bet:.2f} $!</b>'
@@ -2495,7 +2431,6 @@ async def open_tower_handler(call: CallbackQuery) -> None:
         del active_tower_games[game_id]
         return
     game_data["current_floor"] += 1
-    next_mult = calculate_tower_multiplier(game_data["traps_count"], game_data["current_floor"] + 1)
     text = (
         f'<b><tg-emoji emoji-id="5449397725697187601">🗼</tg-emoji> Башня | Ставка: {game_data["bet"]:.2f} $ | Ловушек: {game_data["traps_count"]}</b>\n\n'
         f'<b>Этаж: {game_data["current_floor"]+1} / {TOWER_FLOORS} | Выигрыш: {current_win:.2f} $ (x{multiplier:.2f})</b>'
@@ -2596,11 +2531,7 @@ async def basketball_bet_handler(call: CallbackQuery) -> None:
             f'<b><tg-emoji emoji-id="5465317563145686803">🏀</tg-emoji> Баскетбол | Ставка: {bet_val:.2f} $ | Исход: {bet_type_name}</b>\n\n'
             f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> К сожалению, вы проиграли {bet_val:.2f} $!</b>'
         )
-    try:
-        await msg.delete()
-    except Exception:
-        pass
-    await call.message.edit_text(text=text, parse_mode="HTML", reply_markup=get_basketball_result_keyboard(bet_val, owner_id))
+    await call.message.answer(text=text, parse_mode="HTML", reply_markup=get_basketball_result_keyboard(bet_val, owner_id))
 
 @dp.callback_query(F.data.startswith("basketball_repeat_"))
 async def basketball_repeat_handler(call: CallbackQuery) -> None:
@@ -2684,11 +2615,7 @@ async def football_bet_handler(call: CallbackQuery) -> None:
             f'<b><tg-emoji emoji-id="5319298377412812014">⚽</tg-emoji> Футбол | Ставка: {bet_val:.2f} $ | Исход: {bet_type_name}</b>\n\n'
             f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> К сожалению, вы проиграли {bet_val:.2f} $!</b>'
         )
-    try:
-        await msg.delete()
-    except Exception:
-        pass
-    await call.message.edit_text(text=text, parse_mode="HTML", reply_markup=get_football_result_keyboard(bet_val, owner_id))
+    await call.message.answer(text=text, parse_mode="HTML", reply_markup=get_football_result_keyboard(bet_val, owner_id))
 
 @dp.callback_query(F.data.startswith("football_repeat_"))
 async def football_repeat_handler(call: CallbackQuery) -> None:
@@ -2770,14 +2697,15 @@ async def process_dice_game(call: CallbackQuery, bet_type: str, bet_val: float, 
         val1 = msg1.dice.value
         val2 = msg2.dice.value
         total = val1 + val2
-        res = {'win': False, 'multiplier': DICE_COEFF_SIMPLE}
+        coeff = DICE_COEFF_2
+        if bet_type == 'seven':
+            coeff = DICE_COEFF_SEVEN
+        res = {'win': False, 'multiplier': coeff}
         if bet_type == 'even': res['win'] = (total % 2 == 0)
         elif bet_type == 'odd': res['win'] = (total % 2 != 0)
         elif bet_type == 'more': res['win'] = (total > 7)
         elif bet_type == 'less': res['win'] = (total < 7)
-        elif bet_type == 'seven': 
-            res['win'] = (total == 7)
-            res['multiplier'] = DICE_COEFF_SEVEN
+        elif bet_type == 'seven': res['win'] = (total == 7)
         type_names = {'even':'Чет', 'odd':'Нечет', 'more':'Больше 7', 'less':'Меньше 7', 'seven': 'Ровно 7'}
         t_name = type_names.get(bet_type, bet_type)
         outcome_text = f"Сумма: {total} ({t_name})"
@@ -2785,12 +2713,12 @@ async def process_dice_game(call: CallbackQuery, bet_type: str, bet_val: float, 
         msg = await call.message.answer_dice(emoji=dice_emoji)
         await asyncio.sleep(4)
         val = msg.dice.value
-        res = {'win': False, 'multiplier': DICE_COEFF_SIMPLE}
+        res = {'win': False, 'multiplier': DICE_COEFF_1}
         if bet_type == 'even': res['win'] = (val % 2 == 0)
         elif bet_type == 'odd': res['win'] = (val % 2 != 0)
         elif bet_type == 'more': res['win'] = (val > 3)
         elif bet_type == 'less': res['win'] = (val < 4)
-        type_names = {'even':'Чет', 'odd':'Нечет', 'more':'Больше 3', 'less':'Меньше 4'}
+        type_names = {'even':'Чет', 'odd':'Нечет', 'more':'Больше', 'less':'Меньше'}
         t_name = type_names.get(bet_type, bet_type)
         outcome_text = f"Значение: {val} ({t_name})"
     if res['win']:
@@ -2808,14 +2736,7 @@ async def process_dice_game(call: CallbackQuery, bet_type: str, bet_val: float, 
             f'<b><tg-emoji emoji-id="{DICE_EMOJI_ID}">🎲</tg-emoji> Куб | Ставка: {bet_val:.2f} $ | {outcome_text}</b>\n\n'
             f'<b><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> К сожалению, вы проиграли {bet_val:.2f} $!</b>'
         )
-    try:
-        if is_2_dice:
-            await msg1.delete()
-            await msg2.delete()
-        else:
-            await msg.delete()
-    except: pass
-    await call.message.edit_text(text=text, parse_mode="HTML", reply_markup=get_dice_result_keyboard(bet_val, owner_id))
+    await call.message.answer(text=text, parse_mode="HTML", reply_markup=get_dice_result_keyboard(bet_val, owner_id))
 
 @dp.callback_query(F.data.startswith("dice_bet_"))
 async def dice_bet_handler(call: CallbackQuery) -> None:
@@ -3197,7 +3118,7 @@ async def group_dice_handler(message: Message) -> None:
             val2 = msg2.dice.value
             total = val1 + val2
             win = False
-            coeff = DICE_COEFF_SIMPLE
+            coeff = DICE_COEFF_2
             if btype == 'чет': win = (total % 2 == 0)
             elif btype == 'нечет': win = (total % 2 != 0)
             elif btype == 'больше': win = (total > 7)
@@ -3211,7 +3132,7 @@ async def group_dice_handler(message: Message) -> None:
             await asyncio.sleep(4)
             val = msg.dice.value
             win = False
-            coeff = DICE_COEFF_SIMPLE
+            coeff = DICE_COEFF_1
             if btype == 'чет': win = (val % 2 == 0)
             elif btype == 'нечет': win = (val % 2 != 0)
             elif btype == 'больше': win = (val > 3)
@@ -3303,8 +3224,6 @@ async def play_text_handler(message: Message, state: FSMContext) -> None:
 async def open_wallet_inline_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     user_id = call.from_user.id
     balance = get_user_balance(user_id)
     text = f'<b><tg-emoji emoji-id="5197686464325915345">👛</tg-emoji>Баланс: {balance:.2f} <tg-emoji emoji-id="5197422813463483902">💵</tg-emoji></b>'
@@ -3314,8 +3233,6 @@ async def open_wallet_inline_handler(call: CallbackQuery, state: FSMContext) -> 
 async def open_profile_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     user_id = call.from_user.id
     text = build_profile_text(user_id, call.from_user.full_name)
     await safe_edit_message(call, text, profile_inline_keyboard)
@@ -3324,8 +3241,6 @@ async def open_profile_handler(call: CallbackQuery, state: FSMContext) -> None:
 async def close_profile_handler(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     if not await force_subscription_check(call, state): return
-    if not check_owner(call, call.from_user.id): 
-        await call.answer("Это чужая кнопка!", show_alert=True); return
     await safe_edit_message(call, "<b>Главное меню:</b>", menu_inline_keyboard)
 
 @dp.message(F.text == "/cancel")
