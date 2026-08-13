@@ -25,7 +25,7 @@ dp = Dispatcher()
 
 # Константы вагера
 WAGER_MULTIPLIER = 1.52
-MIN_DEPOSIT_FOR_WITHDRAW = 1.0
+MIN_DEPOSIT_FOR_WITHDRAW = 0.3
 
 # --- БАЗА ДАННЫХ ---
 DB_NAME = "bot_data.db"
@@ -2873,7 +2873,7 @@ async def start_handler(message: Message, state: FSMContext) -> None:
             if await check_subscription(message.bot, message.from_user.id):
                 text = (
                     '<b><tg-emoji emoji-id="5255868234506213301">📤</tg-emoji> Вывод средств</b>\n\n'
-                    '<b>Введите сумму для вывода в USDT (минимум 1.10 $):</b>\n\n'
+                    '<b>Введите сумму для вывода в USDT (минимум 1.5 $):</b>\n\n'
                     '<i><tg-emoji emoji-id="5312140414982071786">❌</tg-emoji> Для отмены введите /cancel</i>'
                 )
                 kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀ Назад", callback_data="open_wallet_inline")]])
